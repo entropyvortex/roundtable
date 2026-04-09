@@ -11,7 +11,7 @@
 RoundTable runs the Consensus Validation Protocol (CVP) across any combination of AI providers — Grok, Claude, GPT, Gemini, Mistral, and more — with configurable personas, real-time streaming, and a premium dark interface designed for long sessions.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Deploy with Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com/new/clone?repository-url=https://github.com/marceloceccon/roundtable)
+[![Deploy with Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com/new/clone?repository-url=https://github.com/entropyvortex/roundtable)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
 
@@ -66,7 +66,7 @@ This is experimental, it has no authentication protection, if you publish this w
 ## Quick Start
 
 ```bash
-git clone https://github.com/marceloceccon/roundtable.git
+git clone https://github.com/entropyvortex/roundtable.git
 cd roundtable
 pnpm install
 ```
@@ -199,7 +199,7 @@ The consensus engine runs entirely server-side. Each round streams responses via
 
 ## Deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/marceloceccon/roundtable)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/entropyvortex/roundtable)
 
 Set your environment variables (`GROK_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AI_PROVIDERS`) in the Vercel dashboard. No database or external services required.
 
