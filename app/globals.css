@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #47556860;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #47556890;
+}
+* {
+  scrollbar-color: #47556860 transparent;
+}
+
+/* ── Prose / Markdown ───────────────────────────────── */
+.prose pre {
+  background: #0f172a !important;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+.prose code {
+  font-size: 0.85em;
+}
+.prose a {
+  color: #93c5fd;
+  text-decoration: none;
+}
+.prose a:hover {
+  text-decoration: underline;
+}
+.prose blockquote {
+  border-left-color: #60a5fa;
+  color: #cbd5e1;
+}
+.prose strong {
+  color: #f1f5f9;
+}
+.prose h1,
+.prose h2,
+.prose h3 {
+  color: #f1f5f9;
+}
+.prose li::marker {
+  color: #64748b;
+}
+
+/* ── Animations ─────────────────────────────────────── */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-in {
+  animation: fadeInUp 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Selection ──────────────────────────────────────── */
+::selection {
+  background: rgba(96, 165, 250, 0.25);
+  color: #f1f5f9;
+}

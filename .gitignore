@@ -1,0 +1,14 @@
+node_modules/
+.next/
+.env
+.env.local
+.next/
+coverage/
+.env.*.local
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+.DS_Store
+*.log
+.pnpm-store/
+.devcontainer/
