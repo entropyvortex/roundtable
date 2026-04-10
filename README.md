@@ -153,7 +153,7 @@ Majority vote asks N models the same question and picks the most common answer. 
 
 ### Example Transcript
 
-This is a simplified reconstruction of how a 3-participant, 3-round run behaves based on the actual code path. The prompt is: *"Should a startup use microservices from day one?"*
+This is a simplified reconstruction of how a 3-participant, 3-round run behaves based on the actual code path. The prompt is: _"Should a startup use microservices from day one?"_
 
 **Round 1 — Initial Analysis:**
 
@@ -163,7 +163,7 @@ This is a simplified reconstruction of how a 3-participant, 3-round run behaves 
 
 > **First-Principles Engineer (GPT-4o):** The question conflates architecture with deployment strategy. A modular monolith can be decomposed later. The real constraint is team size — a 3-person team cannot operate 8 services. CONFIDENCE: 90
 
-*Consensus score: 80 (avg=83.3, stddev=6.2)*
+_Consensus score: 80 (avg=83.3, stddev=6.2)_
 
 **Round 2 — Counterarguments:**
 
@@ -173,7 +173,7 @@ This is a simplified reconstruction of how a 3-participant, 3-round run behaves 
 
 > **First-Principles Engineer:** Risk Analyst's point about premature optimization aligns with my position. The Futurist raises a fair concern about decomposition cost, but this is solvable with discipline. Maintaining position. CONFIDENCE: 88
 
-*Consensus score: 77 (avg=80.3, stddev=10.7 — variance increased due to Futurist's drop)*
+_Consensus score: 77 (avg=80.3, stddev=10.7 — variance increased due to Futurist's drop)_
 
 **Round 3 — Evidence Assessment / Final Synthesis:**
 
@@ -183,7 +183,7 @@ This is a simplified reconstruction of how a 3-participant, 3-round run behaves 
 
 > **First-Principles Engineer:** Consensus is forming around monolith-first with clean boundaries. The Futurist's exception for known-scale cases is reasonable and worth noting. CONFIDENCE: 92
 
-*Final consensus score: 81 (avg=84, stddev=9.8)*
+_Final consensus score: 81 (avg=84, stddev=9.8)_
 
 The human reader sees three final positions that largely converge but preserve the Futurist's conditional exception — something a majority vote would have discarded.
 
