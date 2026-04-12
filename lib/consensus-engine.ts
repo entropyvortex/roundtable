@@ -96,7 +96,6 @@ async function streamParticipant(
   const provider = createOpenAI({
     baseURL: resolved.baseUrl,
     apiKey: resolved.apiKey,
-    compatibility: "compatible",
   });
 
   emit({ type: "participant-start", participantId: participant.id, round: 0 });
@@ -108,7 +107,7 @@ async function streamParticipant(
       model: provider(resolved.modelId),
       system: systemPrompt,
       prompt: userPrompt,
-      maxTokens: 1500,
+      maxOutputTokens: 1500,
       temperature: 0.7,
       abortSignal: signal,
     });
