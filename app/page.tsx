@@ -1,7 +1,7 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────
-// Consensus Arena — Main Page (Clean Dashboard)
+// RoundTable — Main Page (Clean Dashboard)
 // ─────────────────────────────────────────────────────────────
 
 import { useEffect, useCallback, useState } from "react";
@@ -10,6 +10,11 @@ import AISelector from "@/components/AISelector";
 import ResultPanel from "@/components/ResultPanel";
 import MessageFlowDiagram from "@/components/MessageFlowDiagram";
 import BackToTop from "@/components/BackToTop";
+import ConfidenceTrajectory from "@/components/ConfidenceTrajectory";
+import DisagreementPanel from "@/components/DisagreementPanel";
+import CostMeter from "@/components/CostMeter";
+import ConfigPanel from "@/components/ConfigPanel";
+import PromptLibrary from "@/components/PromptLibrary";
 import { toast } from "sonner";
 import {
   Play,
@@ -22,17 +27,20 @@ import {
   Users,
   ArrowRight,
   Sparkles,
+  Eye,
 } from "lucide-react";
 import type { ConsensusEvent, ConsensusRequest } from "@/lib/types";
+import { decodeSnapshotFromHash } from "@/lib/session";
 
 export default function HomePage() {
   const participants = useArenaStore((s) => s.participants);
-  const roundCount = useArenaStore((s) => s.roundCount);
   const prompt = useArenaStore((s) => s.prompt);
+  const options = useArenaStore((s) => s.options);
   const isRunning = useArenaStore((s) => s.isRunning);
   const currentRound = useArenaStore((s) => s.currentRound);
   const progress = useArenaStore((s) => s.progress);
   const finalScore = useArenaStore((s) => s.finalScore);
+  const sharedView = useArenaStore((s) => s.sharedView);
 
   const setAvailableModels = useArenaStore((s) => s.setAvailableModels);
   const setModelsLoading = useArenaStore((s) => s.setModelsLoading);
@@ -40,6 +48,7 @@ export default function HomePage() {
   const setPrompt = useArenaStore((s) => s.setPrompt);
   const cancelConsensus = useArenaStore((s) => s.cancelConsensus);
   const reset = useArenaStore((s) => s.reset);
+  const loadSnapshot = useArenaStore((s) => s.loadSnapshot);
 
   const [showOnboarding, setShowOnboarding] = useState(true);
 
@@ -67,6 +76,18 @@ export default function HomePage() {
       });
   }, [setAvailableModels, setModelsLoading]);
 
+  // Load a shared snapshot from the URL hash, if present
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!window.location.hash) return;
+    decodeSnapshotFromHash(window.location.hash).then((snap) => {
+      if (!snap) return;
+      loadSnapshot(snap);
+      toast.info("Viewing shared session");
+      setShowOnboarding(false);
+    });
+  }, [loadSnapshot]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && useArenaStore.getState().isRunning) {
@@ -88,6 +109,15 @@ export default function HomePage() {
       toast.error("Add at least 2 AI participants");
       return;
     }
+    if (state.options.judgeEnabled && !state.options.judgeModelId) {
+      toast.error("Choose a judge model or disable judge synthesis");
+      return;
+    }
+
+    // Clear any URL hash from a previously loaded shared view
+    if (typeof window !== "undefined" && window.location.hash) {
+      history.replaceState(null, "", window.location.pathname);
+    }
 
     const controller = state.startConsensus();
     toast.info("Consensus started — Esc to cancel");
@@ -95,7 +125,7 @@ export default function HomePage() {
     const body: ConsensusRequest = {
       prompt: state.prompt.trim(),
       participants: state.participants,
-      rounds: state.roundCount,
+      options: state.options,
     };
 
     try {
@@ -130,21 +160,44 @@ export default function HomePage() {
       if (err instanceof DOMException && err.name === "AbortError") return;
       const msg = err instanceof Error ? err.message : "Unknown error";
       toast.error(`Consensus failed: ${msg}`);
-      useArenaStore.getState().completeConsensus(0, `Error: ${msg}`);
+      useArenaStore.getState().completeConsensus(0, `Error: ${msg}`, 0);
     }
   }, []);
 
-  const canRun = !isRunning && prompt.trim().length > 0 && participants.length >= 2;
+  const canRun = !isRunning && !sharedView && prompt.trim().length > 0 && participants.length >= 2;
 
   const handleCancel = useCallback(() => {
     cancelConsensus();
     toast.info("Consensus cancelled");
   }, [cancelConsensus]);
 
+  const handleLeaveSharedView = useCallback(() => {
+    if (typeof window !== "undefined" && window.location.hash) {
+      history.replaceState(null, "", window.location.pathname);
+    }
+    reset();
+  }, [reset]);
+
   return (
     <div className="min-h-screen bg-arena-bg text-arena-text">
+      {/* Shared-view banner */}
+      {sharedView && (
+        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 px-6 py-2 bg-arena-accent/10 border-b border-arena-accent/20">
+          <div className="flex items-center gap-2 text-[11px] text-arena-accent">
+            <Eye className="w-3 h-3" />
+            <span>Viewing a shared session. Reset to start your own run.</span>
+          </div>
+          <button
+            onClick={handleLeaveSharedView}
+            className="text-[11px] text-arena-accent hover:underline"
+          >
+            Exit shared view
+          </button>
+        </div>
+      )}
+
       {/* Onboarding */}
-      {showOnboarding && participants.length === 0 && (
+      {showOnboarding && participants.length === 0 && !sharedView && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm cursor-pointer"
           onClick={() => setShowOnboarding(false)}
@@ -211,18 +264,18 @@ export default function HomePage() {
               </h2>
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setRoundCount(roundCount - 1)}
-                  disabled={isRunning || roundCount <= 1}
+                  onClick={() => setRoundCount(options.rounds - 1)}
+                  disabled={isRunning || options.rounds <= 1 || options.engine === "blind-jury"}
                   className="p-1.5 rounded-lg border border-arena-border text-arena-muted hover:text-arena-text hover:border-arena-accent/50 transition-colors disabled:opacity-25"
                 >
                   <Minus className="w-3.5 h-3.5" />
                 </button>
                 <span className="text-xl font-semibold text-arena-text font-mono w-6 text-center tabular-nums">
-                  {roundCount}
+                  {options.engine === "blind-jury" ? 1 : options.rounds}
                 </span>
                 <button
-                  onClick={() => setRoundCount(roundCount + 1)}
-                  disabled={isRunning || roundCount >= 10}
+                  onClick={() => setRoundCount(options.rounds + 1)}
+                  disabled={isRunning || options.rounds >= 10 || options.engine === "blind-jury"}
                   className="p-1.5 rounded-lg border border-arena-border text-arena-muted hover:text-arena-text hover:border-arena-accent/50 transition-colors disabled:opacity-25"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -230,11 +283,27 @@ export default function HomePage() {
               </div>
             </section>
 
+            <section>
+              <h2 className="text-[10px] font-semibold text-arena-muted uppercase tracking-[0.15em] mb-3">
+                Protocol
+              </h2>
+              <ConfigPanel />
+            </section>
+
+            {/* On xl+ these panels move into the floating Message Flow
+                container on the right. Keep them in the sidebar below
+                that breakpoint so smaller screens still see them. */}
+            <section className="space-y-3 xl:hidden">
+              <CostMeter />
+              <ConfidenceTrajectory />
+              <DisagreementPanel />
+            </section>
+
             {isRunning && (
               <section className="p-4 rounded-xl bg-arena-accent/10 border border-arena-accent/20">
                 <div className="flex items-center justify-between mb-2.5">
                   <p className="text-[11px] text-arena-accent font-semibold">
-                    Round {currentRound} of {roundCount}
+                    Round {currentRound} of {options.rounds}
                   </p>
                   <button
                     onClick={handleCancel}
@@ -282,15 +351,18 @@ export default function HomePage() {
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                disabled={isRunning}
+                disabled={isRunning || sharedView}
                 placeholder="Enter a topic, claim, or question for multi-AI consensus analysis..."
                 rows={3}
                 className="w-full bg-arena-surface border border-arena-border rounded-xl px-5 py-4 text-[14px] leading-relaxed text-arena-text placeholder:text-arena-muted/50 focus:outline-none focus:border-arena-accent/60 focus:ring-1 focus:ring-arena-accent/20 resize-none disabled:opacity-40 transition-all"
               />
+              <PromptLibrary />
               <div className="flex items-center justify-between mt-4">
                 <p className="text-[11px] text-arena-muted tabular-nums">
                   {participants.length} participant{participants.length !== 1 ? "s" : ""} &middot;{" "}
-                  {roundCount} round{roundCount !== 1 ? "s" : ""}
+                  {options.engine === "blind-jury"
+                    ? "Blind Jury"
+                    : `${options.rounds} round${options.rounds !== 1 ? "s" : ""}`}
                 </p>
                 {isRunning ? (
                   <button
@@ -348,18 +420,43 @@ function processEvent(event: ConsensusEvent) {
         event.round,
         event.confidence,
         event.fullContent,
+        event.usage,
+        event.durationMs,
+        event.error,
       );
+      if (event.error) {
+        const p = s.participants.find((x) => x.id === event.participantId);
+        const label = p
+          ? `${p.modelInfo.providerName} / ${p.modelInfo.modelId}`
+          : event.participantId;
+        toast.error(`${label}: ${event.error}`);
+      }
       break;
     case "round-end":
       s.endRound(event.round, event.consensusScore);
       break;
+    case "disagreements":
+      s.addDisagreements(event.round, event.disagreements);
+      break;
+    case "early-stop":
+      s.setEarlyStopped({ round: event.round, delta: event.delta, reason: event.reason });
+      break;
+    case "judge-start":
+      s.startJudge(event.modelId, event.providerName);
+      break;
+    case "judge-token":
+      s.appendJudgeToken(event.token);
+      break;
+    case "judge-end":
+      s.completeJudge(event.result);
+      break;
     case "consensus-complete":
-      s.completeConsensus(event.finalScore, event.summary);
+      s.completeConsensus(event.finalScore, event.summary, event.roundsCompleted);
       toast.success(`Consensus complete! Score: ${event.finalScore}%`);
       break;
     case "error":
       toast.error(event.message);
-      s.completeConsensus(0, event.message);
+      s.completeConsensus(0, event.message, 0);
       break;
   }
 }
