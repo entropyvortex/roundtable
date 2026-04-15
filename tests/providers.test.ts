@@ -255,7 +255,7 @@ describe("providers", () => {
       expect(models[0].id).toBe("grok:grok-3");
       expect(models[0].preferred).toBe(true);
       // No apiKey exposed
-      expect((models[0] as Record<string, unknown>)["apiKey"]).toBeUndefined();
+      expect((models[0] as unknown as Record<string, unknown>)["apiKey"]).toBeUndefined();
     });
   });
 

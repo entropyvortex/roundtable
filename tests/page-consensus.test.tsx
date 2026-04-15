@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
-import { useArenaStore } from "@/lib/store";
+import { useArenaStore, DEFAULT_OPTIONS } from "@/lib/store";
 import { PERSONAS } from "@/lib/personas";
 import type { ModelInfo } from "@/lib/types";
 
@@ -25,7 +25,7 @@ describe("HomePage — consensus execution", () => {
       availableModels: [model],
       modelsLoading: false,
       participants: [],
-      roundCount: 2,
+      options: { ...DEFAULT_OPTIONS, rounds: 2 },
       prompt: "",
     });
 
@@ -232,5 +232,204 @@ describe("HomePage — consensus execution", () => {
     // No way to directly call processEvent from test (it's module-scoped),
     // but the coverage for the early return is hit by the SSE test above
     expect(useArenaStore.getState().rounds).toEqual([]);
+  });
+
+  it("drives every new SSE event through processEvent", async () => {
+    const { default: HomePage } = await import("@/app/page");
+
+    useArenaStore.setState({
+      participants: [
+        { id: "p-1", modelInfo: model, persona: PERSONAS[0] },
+        { id: "p-2", modelInfo: model, persona: PERSONAS[1] },
+      ],
+      prompt: "drive all events",
+    });
+
+    const sse = [
+      'data: {"type":"round-start","round":1,"roundType":"initial-analysis","label":"Initial"}',
+      'data: {"type":"participant-start","participantId":"p-1","round":1}',
+      'data: {"type":"token","participantId":"p-1","round":1,"token":"Hello"}',
+      'data: {"type":"participant-end","participantId":"p-1","round":1,"confidence":80,"fullContent":"Hello\\nCONFIDENCE: 80","durationMs":50,"usage":{"inputTokens":50,"outputTokens":20,"totalTokens":70,"estimatedCostUSD":0.001}}',
+      'data: {"type":"round-end","round":1,"consensusScore":72}',
+      'data: {"type":"disagreements","round":1,"disagreements":[{"id":"r1-p-1-p-2","round":1,"participantAId":"p-1","participantBId":"p-2","severity":25,"label":"A vs B"}]}',
+      'data: {"type":"early-stop","round":1,"delta":2,"reason":"converged"}',
+      'data: {"type":"judge-start","modelId":"gpt-4o","providerName":"OpenAI"}',
+      'data: {"type":"judge-token","token":"synth"}',
+      'data: {"type":"judge-end","result":{"modelId":"gpt-4o","providerName":"OpenAI","content":"## Majority Position\\nA.\\nJUDGE_CONFIDENCE: 88","majorityPosition":"A.","minorityPositions":"","unresolvedDisputes":""}}',
+      'data: {"type":"consensus-complete","finalScore":72,"summary":"Done","roundsCompleted":1}',
+      "",
+    ].join("\n\n");
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(sse));
+        controller.close();
+      },
+    });
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/providers") {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [model] }) });
+      }
+      return Promise.resolve({ ok: true, body: stream });
+    });
+
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Run Consensus").closest("button")!);
+    });
+
+    await waitFor(() => {
+      const s = useArenaStore.getState();
+      expect(s.finalScore).toBe(72);
+      expect(s.disagreements).toHaveLength(1);
+      expect(s.earlyStopped?.round).toBe(1);
+      expect(s.judge?.content).toContain("Majority");
+    });
+  });
+
+  it("shows a participant-level error toast and stores the error on the response", async () => {
+    const { toast } = await import("sonner");
+    const { default: HomePage } = await import("@/app/page");
+
+    useArenaStore.setState({
+      participants: [
+        { id: "p-1", modelInfo: model, persona: PERSONAS[0] },
+        { id: "p-2", modelInfo: model, persona: PERSONAS[1] },
+      ],
+      prompt: "participant error test",
+    });
+
+    const sse = [
+      'data: {"type":"round-start","round":1,"roundType":"initial-analysis","label":"Analysis"}',
+      'data: {"type":"participant-start","participantId":"p-1","round":1}',
+      'data: {"type":"token","participantId":"p-1","round":1,"token":"[Error from T / m: Not Found — HTTP 404]"}',
+      'data: {"type":"participant-end","participantId":"p-1","round":1,"confidence":0,"fullContent":"[Error from T / m: Not Found — HTTP 404]","durationMs":20,"error":"Not Found — HTTP 404"}',
+      'data: {"type":"round-end","round":1,"consensusScore":0}',
+      'data: {"type":"consensus-complete","finalScore":0,"summary":"done","roundsCompleted":1}',
+      "",
+    ].join("\n\n");
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(sse));
+        controller.close();
+      },
+    });
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/providers") {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [model] }) });
+      }
+      return Promise.resolve({ ok: true, body: stream });
+    });
+
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Run Consensus").closest("button")!);
+    });
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Not Found"));
+      const s = useArenaStore.getState();
+      const response = s.rounds[0]?.responses.find((r) => r.participantId === "p-1");
+      expect(response?.error).toBe("Not Found — HTTP 404");
+    });
+  });
+
+  it("surfaces an `error` SSE event via toast and completes with 0", async () => {
+    const { toast } = await import("sonner");
+    const { default: HomePage } = await import("@/app/page");
+
+    useArenaStore.setState({
+      participants: [
+        { id: "p-1", modelInfo: model, persona: PERSONAS[0] },
+        { id: "p-2", modelInfo: model, persona: PERSONAS[1] },
+      ],
+      prompt: "error test",
+    });
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"type":"error","message":"boom"}\n\n'));
+        controller.close();
+      },
+    });
+
+    mockFetch.mockImplementation((url: string) => {
+      if (url === "/api/providers") {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [model] }) });
+      }
+      return Promise.resolve({ ok: true, body: stream });
+    });
+
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Run Consensus").closest("button")!);
+    });
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("boom");
+    });
+  });
+
+  it("hydrates from a #rt= shared hash on mount", async () => {
+    const { decodeSnapshotFromHash: _decode, encodeSnapshotToHash } = await import("@/lib/session");
+    const snap = {
+      v: 1 as const,
+      prompt: "from hash",
+      engine: "cvp" as const,
+      options: { ...DEFAULT_OPTIONS, rounds: 2 },
+      participants: [{ id: "p-1", modelInfo: model, persona: PERSONAS[0] }],
+      rounds: [
+        {
+          number: 1,
+          type: "initial-analysis" as const,
+          label: "I",
+          consensusScore: 50,
+          responses: [],
+        },
+      ],
+      finalScore: 50,
+      finalSummary: "hi",
+      judge: null,
+      disagreements: [],
+      tokenTotal: null,
+      createdAt: Date.now(),
+    };
+    const hash = await encodeSnapshotToHash(snap);
+    window.history.replaceState(null, "", `/#${hash}`);
+
+    const { default: HomePage } = await import("@/app/page");
+    render(<HomePage />);
+
+    await waitFor(() => {
+      const s = useArenaStore.getState();
+      expect(s.prompt).toBe("from hash");
+      expect(s.sharedView).toBe(true);
+    });
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("blocks Run when judge is enabled but no judge model is selected", async () => {
+    const { toast } = await import("sonner");
+    const { default: HomePage } = await import("@/app/page");
+
+    useArenaStore.setState({
+      participants: [
+        { id: "p-1", modelInfo: model, persona: PERSONAS[0] },
+        { id: "p-2", modelInfo: model, persona: PERSONAS[1] },
+      ],
+      prompt: "needs judge",
+      options: { ...DEFAULT_OPTIONS, judgeEnabled: true, judgeModelId: undefined },
+    });
+
+    render(<HomePage />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("Run Consensus").closest("button")!);
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("judge"));
   });
 });

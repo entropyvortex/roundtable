@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 
-// Mock the consensus engine (accepts signal as 5th arg)
+// Mock the consensus engine (new signature — options bundle)
 vi.mock("@/lib/consensus-engine", () => ({
-  runConsensus: vi.fn(async (_prompt, _participants, _rounds, emit, _signal) => {
+  runConsensus: vi.fn(async (_prompt, _participants, _options, emit, _signal) => {
     emit({ type: "round-start", round: 1, roundType: "initial-analysis", label: "Analysis" });
-    emit({ type: "consensus-complete", finalScore: 85, summary: "Done" });
+    emit({ type: "consensus-complete", finalScore: 85, summary: "Done", roundsCompleted: 1 });
   }),
 }));
 
@@ -22,16 +22,14 @@ vi.mock("@/lib/personas", () => ({
 
 // Mock providers (used by the route to validate models)
 vi.mock("@/lib/providers", () => ({
-  findResolvedModel: (id: string) =>
-    id
-      ? { providerId: "t", providerName: "T", modelId: "m", baseUrl: "http://x", apiKey: "k" }
-      : undefined,
+  findResolvedModel: (id: string) => {
+    if (!id) return undefined;
+    if (id === "unknown:model") return undefined;
+    return { providerId: "t", providerName: "T", modelId: "m", baseUrl: "http://x", apiKey: "k" };
+  },
 }));
 
-// We need to reset rate limiter state between tests.
-// The route module stores request counts in a module-level Map.
-// Re-importing would create a fresh module, but vi.mock makes that tricky.
-// Instead, we'll use unique IPs per test by varying x-forwarded-for.
+// Use unique IPs per test to avoid rate limiting between tests
 let testIpCounter = 0;
 function makeRequest(body: unknown): Request {
   testIpCounter++;
@@ -98,7 +96,7 @@ describe("POST /api/consensus", () => {
     expect(response.status).toBe(200);
   });
 
-  it("returns SSE stream for valid request", async () => {
+  it("returns SSE stream for valid legacy `rounds` body", async () => {
     const response = await POST(
       makeRequest({
         prompt: "test topic",
@@ -122,5 +120,160 @@ describe("POST /api/consensus", () => {
 
     expect(output).toContain("round-start");
     expect(output).toContain("consensus-complete");
+  });
+
+  it("accepts an options bundle", async () => {
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [{ id: "p-1", modelInfo: { id: "t:m" }, persona: { id: "test" } }],
+        options: {
+          engine: "cvp",
+          rounds: 3,
+          randomizeOrder: true,
+          blindFirstRound: true,
+          earlyStop: true,
+          judgeEnabled: false,
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("accepts the blind-jury engine", async () => {
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [{ id: "p-1", modelInfo: { id: "t:m" }, persona: { id: "test" } }],
+        options: {
+          engine: "blind-jury",
+          rounds: 1,
+          randomizeOrder: false,
+          blindFirstRound: false,
+          earlyStop: false,
+          judgeEnabled: false,
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects judgeEnabled with no judge model", async () => {
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [{ id: "p-1", modelInfo: { id: "t:m" }, persona: { id: "test" } }],
+        options: {
+          engine: "cvp",
+          rounds: 2,
+          randomizeOrder: false,
+          blindFirstRound: false,
+          earlyStop: false,
+          judgeEnabled: true,
+        },
+      }),
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain("judgeModelId");
+  });
+
+  it("accepts judgeEnabled with a judge model", async () => {
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [{ id: "p-1", modelInfo: { id: "t:m" }, persona: { id: "test" } }],
+        options: {
+          engine: "cvp",
+          rounds: 2,
+          randomizeOrder: false,
+          blindFirstRound: false,
+          earlyStop: false,
+          judgeEnabled: true,
+          judgeModelId: "t:m",
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects when a participant's model cannot be resolved", async () => {
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [{ id: "p-1", modelInfo: { id: "unknown:model" }, persona: { id: "test" } }],
+        rounds: 1,
+      }),
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain("Model not available");
+  });
+
+  it("rejects when the judge model cannot be resolved", async () => {
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [{ id: "p-1", modelInfo: { id: "t:m" }, persona: { id: "test" } }],
+        options: {
+          engine: "cvp",
+          rounds: 1,
+          randomizeOrder: false,
+          blindFirstRound: false,
+          earlyStop: false,
+          judgeEnabled: true,
+          judgeModelId: "unknown:model",
+        },
+      }),
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain("Judge model not available");
+  });
+
+  it("surfaces engine errors via an `error` SSE event", async () => {
+    const { runConsensus } = await import("@/lib/consensus-engine");
+    (runConsensus as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      throw new Error("explode");
+    });
+
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [{ id: "p-1", modelInfo: { id: "t:m" }, persona: { id: "test" } }],
+        rounds: 1,
+      }),
+    );
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      output += decoder.decode(value);
+    }
+    expect(output).toContain("error");
+    expect(output).toContain("explode");
+  });
+
+  it("returns 429 when rate limit is exceeded for a single IP", async () => {
+    const fixedIp = "rate-limit-test-ip";
+    const makeFixed = () =>
+      new Request("http://localhost/api/consensus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-forwarded-for": fixedIp },
+        body: JSON.stringify({
+          prompt: "test",
+          participants: [{ id: "p-1", modelInfo: { id: "t:m" }, persona: { id: "test" } }],
+          rounds: 1,
+        }),
+      });
+
+    let last: Response | null = null;
+    for (let i = 0; i < 6; i++) {
+      last = await POST(makeFixed());
+    }
+    expect(last?.status).toBe(429);
   });
 });

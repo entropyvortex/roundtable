@@ -114,6 +114,46 @@ describe("AISelector — interactions", () => {
   });
 });
 
+describe("ResultPanel — error card", () => {
+  beforeEach(() => {
+    useArenaStore.getState().reset();
+  });
+
+  it("renders an error card with the provider error when a response has error set", async () => {
+    const { default: ResultPanel } = await import("@/components/ResultPanel");
+
+    useArenaStore.setState({
+      participants: [{ id: "p-1", modelInfo: model1, persona: PERSONAS[0] }],
+      rounds: [
+        {
+          number: 1,
+          type: "initial-analysis" as const,
+          label: "Analysis",
+          responses: [
+            {
+              participantId: "p-1",
+              roundNumber: 1,
+              content: "[Error from Prov / m1: Not Found — HTTP 404]",
+              confidence: 0,
+              timestamp: Date.now(),
+              error: "Not Found — HTTP 404",
+            },
+          ],
+          consensusScore: 0,
+        },
+      ],
+      currentRound: 2,
+    });
+
+    render(<ResultPanel />);
+    expect(screen.getByText("Provider error")).toBeInTheDocument();
+    expect(screen.getByText("Not Found — HTTP 404")).toBeInTheDocument();
+    expect(screen.getByText("ERROR")).toBeInTheDocument();
+    // Must NOT render a "..." placeholder
+    expect(screen.queryByText("...")).not.toBeInTheDocument();
+  });
+});
+
 describe("ResultPanel — copy button", () => {
   beforeEach(() => {
     useArenaStore.getState().reset();

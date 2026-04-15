@@ -3,10 +3,11 @@
 // Security hardening:
 // - Server-side limits on prompt size, participant count, round count
 // - Personas are server-rebuilt from persona IDs (client systemPrompts ignored)
+// - Engine options are validated and clamped server-side
 // - Request abort signal is forwarded to the engine
 // - Basic rate limiting via in-memory sliding window
 
-import type { ConsensusRequest, ConsensusEvent } from "@/lib/types";
+import type { ConsensusEvent, ConsensusOptions, EngineType, Participant } from "@/lib/types";
 import { runConsensus } from "@/lib/consensus-engine";
 import { getPersona } from "@/lib/personas";
 import { findResolvedModel } from "@/lib/providers";
@@ -46,6 +47,46 @@ setInterval(() => {
   }
 }, RATE_WINDOW_MS);
 
+// ── Options parsing & validation ───────────────────────────
+
+interface LooseRequestBody {
+  prompt?: unknown;
+  participants?: unknown;
+  rounds?: unknown; // legacy
+  options?: unknown;
+}
+
+function parseEngine(v: unknown): EngineType {
+  return v === "blind-jury" ? "blind-jury" : "cvp";
+}
+
+function parseBool(v: unknown, fallback: boolean): boolean {
+  return typeof v === "boolean" ? v : fallback;
+}
+
+function parseOptions(body: LooseRequestBody): ConsensusOptions {
+  const raw = (body.options ?? {}) as Record<string, unknown>;
+  const legacyRounds = typeof body.rounds === "number" ? body.rounds : undefined;
+  const requestedRounds = typeof raw.rounds === "number" ? raw.rounds : (legacyRounds ?? 5);
+
+  const rounds = Math.min(Math.max(1, Math.floor(requestedRounds)), MAX_ROUNDS);
+
+  const judgeModelId =
+    typeof raw.judgeModelId === "string" && raw.judgeModelId.length > 0
+      ? (raw.judgeModelId as string)
+      : undefined;
+
+  return {
+    engine: parseEngine(raw.engine),
+    rounds,
+    randomizeOrder: parseBool(raw.randomizeOrder, true),
+    blindFirstRound: parseBool(raw.blindFirstRound, true),
+    earlyStop: parseBool(raw.earlyStop, true),
+    judgeEnabled: parseBool(raw.judgeEnabled, false),
+    judgeModelId,
+  };
+}
+
 // ── Route handler ──────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -62,11 +103,22 @@ export async function POST(request: Request) {
     });
   }
 
-  const body = (await request.json()) as ConsensusRequest;
+  const body = (await request.json()) as LooseRequestBody;
 
   // ── Validation ───────────────────────────────────────────
 
-  if (!body.prompt || !body.participants?.length || !body.rounds) {
+  const hasRounds =
+    body.rounds !== undefined ||
+    (typeof body.options === "object" &&
+      body.options !== null &&
+      "rounds" in (body.options as Record<string, unknown>));
+
+  if (
+    !body.prompt ||
+    !Array.isArray(body.participants) ||
+    body.participants.length === 0 ||
+    !hasRounds
+  ) {
     return new Response(JSON.stringify({ error: "Missing required fields" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
@@ -80,46 +132,65 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!Array.isArray(body.participants) || body.participants.length > MAX_PARTICIPANTS) {
+  if (body.participants.length > MAX_PARTICIPANTS) {
     return new Response(
       JSON.stringify({ error: `Maximum ${MAX_PARTICIPANTS} participants allowed` }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
 
-  const rounds = Math.min(Math.max(1, Math.floor(body.rounds)), MAX_ROUNDS);
+  const options = parseOptions(body);
 
   // ── Rebuild participants server-side ─────────────────────
   // Never trust client-supplied systemPrompts or arbitrary model IDs.
   // Re-resolve models and personas from their IDs.
 
-  const validatedParticipants: Array<{
-    id: string;
-    modelInfo: { id: string; providerId: string; providerName: string; modelId: string };
-    persona: ReturnType<typeof getPersona>;
-  }> = [];
-  for (const p of body.participants) {
-    const resolved = findResolvedModel(p.modelInfo?.id ?? "");
+  const validatedParticipants: Participant[] = [];
+  for (const p of body.participants as Array<{
+    id?: unknown;
+    modelInfo?: { id?: unknown };
+    persona?: { id?: unknown };
+  }>) {
+    const modelCompositeId = typeof p.modelInfo?.id === "string" ? p.modelInfo.id : "";
+    const resolved = findResolvedModel(modelCompositeId);
     if (!resolved) {
-      return new Response(JSON.stringify({ error: `Model not available: ${p.modelInfo?.id}` }), {
+      return new Response(JSON.stringify({ error: `Model not available: ${modelCompositeId}` }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
 
     // Rebuild persona from server-side definitions (ignore client systemPrompt)
-    const persona = getPersona(p.persona?.id ?? "");
+    const personaId = typeof p.persona?.id === "string" ? p.persona.id : "";
+    const persona = getPersona(personaId);
 
     validatedParticipants.push({
-      id: p.id,
+      id: typeof p.id === "string" ? p.id : `p-${validatedParticipants.length + 1}`,
       modelInfo: {
-        id: p.modelInfo.id,
+        id: modelCompositeId,
         providerId: resolved.providerId,
         providerName: resolved.providerName,
         modelId: resolved.modelId,
       },
       persona,
     });
+  }
+
+  // Validate judge model, if requested
+  if (options.judgeEnabled) {
+    if (!options.judgeModelId) {
+      return new Response(
+        JSON.stringify({ error: "Judge enabled but no judgeModelId was supplied" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    const judgeResolved = findResolvedModel(options.judgeModelId);
+    if (!judgeResolved) {
+      return new Response(
+        JSON.stringify({ error: `Judge model not available: ${options.judgeModelId}` }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
   }
 
   // ── Stream with abort support ────────────────────────────
@@ -139,9 +210,9 @@ export async function POST(request: Request) {
 
       try {
         await runConsensus(
-          body.prompt,
+          body.prompt as string,
           validatedParticipants,
-          rounds,
+          options,
           emit,
           request.signal, // forward abort signal
         );

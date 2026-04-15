@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { useArenaStore } from "@/lib/store";
+import { useArenaStore, DEFAULT_OPTIONS } from "@/lib/store";
 
 // Mock sonner
 vi.mock("sonner", () => ({
@@ -25,7 +25,7 @@ describe("HomePage", () => {
       availableModels: [],
       modelsLoading: true,
       participants: [],
-      roundCount: 5,
+      options: { ...DEFAULT_OPTIONS },
       prompt: "",
     });
 
@@ -105,11 +105,11 @@ describe("HomePage", () => {
 
     if (plusBtn) {
       fireEvent.click(plusBtn);
-      expect(useArenaStore.getState().roundCount).toBe(6);
+      expect(useArenaStore.getState().options.rounds).toBe(6);
     }
     if (minusBtn) {
       fireEvent.click(minusBtn);
-      expect(useArenaStore.getState().roundCount).toBe(5);
+      expect(useArenaStore.getState().options.rounds).toBe(5);
     }
   });
 

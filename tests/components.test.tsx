@@ -33,7 +33,7 @@ describe("ResultPanel", () => {
     useArenaStore.getState().reset();
     useArenaStore.setState({
       participants: [],
-      roundCount: 3,
+      options: { ...useArenaStore.getState().options, rounds: 3 },
       isRunning: false,
       rounds: [],
       finalScore: null,
@@ -106,7 +106,7 @@ describe("ResultPanel", () => {
       progress: 0.6,
       isRunning: true,
       currentRound: 2,
-      roundCount: 3,
+      options: { ...useArenaStore.getState().options, rounds: 3 },
     });
 
     render(<ResultPanel />);

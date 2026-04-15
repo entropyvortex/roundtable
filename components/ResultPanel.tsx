@@ -8,6 +8,8 @@ import { useArenaStore } from "@/lib/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useEffect, useRef, memo, useCallback, useState } from "react";
+import JudgeCard from "./JudgeCard";
+import SessionMenu from "./SessionMenu";
 import {
   CheckCircle,
   Circle,
@@ -18,6 +20,8 @@ import {
   ChevronUp,
   Copy,
   Check,
+  ZapOff,
+  AlertCircle,
 } from "lucide-react";
 
 const remarkPlugins = [remarkGfm];
@@ -31,7 +35,10 @@ export default function ResultPanel() {
   const finalSummary = useArenaStore((s) => s.finalSummary);
   const progress = useArenaStore((s) => s.progress);
   const cancelConsensus = useArenaStore((s) => s.cancelConsensus);
-  const roundCount = useArenaStore((s) => s.roundCount);
+  const roundCount = useArenaStore((s) => s.options.rounds);
+  const earlyStopped = useArenaStore((s) => s.earlyStopped);
+  const judge = useArenaStore((s) => s.judge);
+  const judgeRunning = useArenaStore((s) => s.judgeRunning);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,7 +64,7 @@ export default function ResultPanel() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  if (rounds.length === 0 && !isRunning) return null;
+  if (rounds.length === 0 && !isRunning && !judge && !judgeRunning) return null;
 
   return (
     <div className="w-full max-w-4xl mx-auto px-6 pb-8 space-y-8">
@@ -137,6 +144,7 @@ export default function ResultPanel() {
                   personaEmoji={participant.persona.emoji}
                   confidence={response.confidence}
                   content={response.content}
+                  error={response.error}
                 />
               );
             })}
@@ -147,6 +155,22 @@ export default function ResultPanel() {
           </div>
         </div>
       ))}
+
+      {/* Early stop notice */}
+      {earlyStopped && (
+        <div className="flex items-start gap-3 rounded-xl border border-arena-warning/20 bg-arena-warning/5 px-5 py-3">
+          <ZapOff className="w-4 h-4 text-arena-warning mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="text-[12px] font-semibold text-arena-warning">
+              Stopped early after round {earlyStopped.round}
+            </p>
+            <p className="text-[11px] text-arena-muted leading-relaxed">{earlyStopped.reason}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Judge synthesis */}
+      <JudgeCard />
 
       {/* Final consensus */}
       {finalScore !== null && (
@@ -159,6 +183,7 @@ export default function ResultPanel() {
             <span className="ml-auto text-2xl font-bold text-arena-accent font-mono tabular-nums">
               {finalScore}%
             </span>
+            <SessionMenu />
           </div>
           {finalSummary && (
             <p className="text-[13px] text-arena-muted leading-relaxed">{finalSummary}</p>
@@ -231,6 +256,7 @@ const CompletedResponseCard = memo(function CompletedResponseCard({
   personaEmoji,
   confidence,
   content,
+  error,
 }: {
   responseId: string;
   modelName: string;
@@ -240,6 +266,7 @@ const CompletedResponseCard = memo(function CompletedResponseCard({
   personaEmoji: string;
   confidence: number;
   content: string;
+  error?: string;
 }) {
   const displayContent = content.replace(/\nCONFIDENCE:\s*\d+\s*$/i, "").trim();
   const [copied, setCopied] = useState(false);
@@ -250,6 +277,37 @@ const CompletedResponseCard = memo(function CompletedResponseCard({
       setTimeout(() => setCopied(false), 2000);
     });
   }, [displayContent]);
+
+  if (error) {
+    return (
+      <div
+        id={responseId}
+        data-response-id={responseId}
+        className="group/card rounded-xl border border-arena-danger/40 bg-arena-danger/5 overflow-hidden scroll-mt-24 relative"
+        style={{ borderLeftColor: "#f87171", borderLeftWidth: 3 }}
+      >
+        <Header
+          modelName={modelName}
+          providerName={providerName}
+          personaName={personaName}
+          personaColor={personaColor}
+          personaEmoji={personaEmoji}
+          errored
+        />
+        <div className="px-5 py-4 flex items-start gap-3">
+          <AlertCircle className="w-4 h-4 text-arena-danger shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-semibold text-arena-danger">Provider error</p>
+            <p className="text-[11px] font-mono text-arena-text/80 mt-1 break-words">{error}</p>
+            <p className="text-[10px] text-arena-muted mt-2 leading-relaxed">
+              Check your provider base URL, API key, and that the model ID exists at the upstream
+              endpoint. This participant&apos;s response is excluded from the consensus score.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -333,6 +391,7 @@ const Header = memo(function Header({
   personaEmoji,
   confidence,
   streaming,
+  errored,
 }: {
   modelName: string;
   providerName: string;
@@ -341,6 +400,7 @@ const Header = memo(function Header({
   personaEmoji: string;
   confidence?: number;
   streaming?: boolean;
+  errored?: boolean;
 }) {
   return (
     <div className="flex items-center gap-2.5 px-5 py-3 border-b border-arena-border/40 bg-arena-bg/30">
@@ -357,7 +417,12 @@ const Header = memo(function Header({
         </span>
       </div>
       {streaming && <Loader2 className="w-3.5 h-3.5 text-arena-accent animate-spin" />}
-      {confidence != null && (
+      {errored && (
+        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md bg-arena-danger/15 text-arena-danger">
+          ERROR
+        </span>
+      )}
+      {!errored && confidence != null && (
         <span
           className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md"
           style={{ backgroundColor: `${personaColor}15`, color: personaColor }}

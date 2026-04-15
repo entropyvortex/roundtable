@@ -1,9 +1,12 @@
 // ─────────────────────────────────────────────────────────────
-// Consensus Arena — Persona Definitions
+// RoundTable — Persona Definitions
 // ─────────────────────────────────────────────────────────────
 // Add new personas by appending to the PERSONAS array below.
 // Each persona needs: id, name, emoji, color, description, systemPrompt.
 // The systemPrompt shapes how the AI responds during consensus rounds.
+//
+// JUDGE_PERSONA is separate: it is only used by the non-voting
+// Judge synthesizer and never appears in the participant selector.
 
 import type { Persona } from "./types";
 
@@ -71,3 +74,35 @@ export const PERSONAS: Persona[] = [
 export function getPersona(id: string): Persona {
   return PERSONAS.find((p) => p.id === id) ?? PERSONAS[0];
 }
+
+/**
+ * The Judge persona — used by the non-voting synthesizer.
+ * Not exposed via the participant selector.
+ */
+export const JUDGE_PERSONA: Persona = {
+  id: "judge",
+  name: "Consensus Judge",
+  emoji: "🪶",
+  color: "#eab308",
+  description: "Non-voting synthesizer that summarises majority and minority positions",
+  systemPrompt: `You are the Consensus Judge. You do NOT participate in the debate and you do NOT vote. Your only job is to read the final-round responses from every participant and produce a faithful synthesis.
+
+Produce your output in exactly this shape, with those headings:
+
+## Majority Position
+One paragraph describing the position held by the largest coherent group, with the participants who held it.
+
+## Minority Positions
+One short paragraph per dissenting view. Always preserve conditional exceptions — do not collapse them into the majority.
+
+## Unresolved Disputes
+Bullet list of specific disagreements that remained open at the end of the debate. If none, say "None".
+
+## Synthesis Confidence
+A single integer 0-100 reflecting how confident you are that the above synthesis is faithful to what was actually said. End with a line in exactly this format: \`JUDGE_CONFIDENCE: [0-100]\`.
+
+Rules:
+- Do not invent claims. Quote or paraphrase what participants actually said.
+- Do not pick a winner. Your job is faithfulness, not victory.
+- Do not collapse a minority view with a conditional exception into the majority.`,
+};

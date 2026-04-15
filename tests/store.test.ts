@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useArenaStore } from "@/lib/store";
+import { useArenaStore, DEFAULT_OPTIONS } from "@/lib/store";
 import { PERSONAS } from "@/lib/personas";
-import type { ModelInfo } from "@/lib/types";
+import type { ModelInfo, SessionSnapshot } from "@/lib/types";
 
 const mockModel: ModelInfo = {
   id: "test:model-1",
@@ -27,8 +27,8 @@ describe("ArenaStore", () => {
       availableModels: [],
       modelsLoading: true,
       participants: [],
-      roundCount: 5,
       prompt: "",
+      options: { ...DEFAULT_OPTIONS },
     });
   });
 
@@ -79,18 +79,27 @@ describe("ArenaStore", () => {
   describe("configuration", () => {
     it("sets round count clamped between 1 and 10", () => {
       useArenaStore.getState().setRoundCount(7);
-      expect(useArenaStore.getState().roundCount).toBe(7);
+      expect(useArenaStore.getState().options.rounds).toBe(7);
 
       useArenaStore.getState().setRoundCount(0);
-      expect(useArenaStore.getState().roundCount).toBe(1);
+      expect(useArenaStore.getState().options.rounds).toBe(1);
 
       useArenaStore.getState().setRoundCount(15);
-      expect(useArenaStore.getState().roundCount).toBe(10);
+      expect(useArenaStore.getState().options.rounds).toBe(10);
     });
 
     it("sets prompt", () => {
       useArenaStore.getState().setPrompt("test prompt");
       expect(useArenaStore.getState().prompt).toBe("test prompt");
+    });
+
+    it("setOption toggles individual engine options", () => {
+      useArenaStore.getState().setOption("engine", "blind-jury");
+      expect(useArenaStore.getState().options.engine).toBe("blind-jury");
+      useArenaStore.getState().setOption("randomizeOrder", false);
+      expect(useArenaStore.getState().options.randomizeOrder).toBe(false);
+      useArenaStore.getState().setOption("judgeModelId", "foo:bar");
+      expect(useArenaStore.getState().options.judgeModelId).toBe("foo:bar");
     });
   });
 
@@ -107,6 +116,8 @@ describe("ArenaStore", () => {
       expect(s.activeStreams).toEqual({});
       expect(s.finalScore).toBeNull();
       expect(s.progress).toBe(0);
+      expect(s.tokenTotal.totalTokens).toBe(0);
+      expect(s.disagreements).toEqual([]);
     });
 
     it("cancelConsensus aborts and sets isRunning false", () => {
@@ -138,33 +149,42 @@ describe("ArenaStore", () => {
       useArenaStore.getState().appendToken("p-1", 1, "streaming");
       useArenaStore
         .getState()
-        .completeParticipantRound("p-1", 1, 75, "Full response\nCONFIDENCE: 75");
+        .completeParticipantRound("p-1", 1, 75, "Full response\nCONFIDENCE: 75", {
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+          estimatedCostUSD: 0.001,
+        });
 
       const s = useArenaStore.getState();
       expect(s.activeStreams["p-1"]).toBe("");
       expect(s.rounds[0].responses).toHaveLength(1);
       expect(s.rounds[0].responses[0].confidence).toBe(75);
+      expect(s.tokenTotal.totalTokens).toBe(150);
+      expect(s.usageByParticipant["p-1"].totalTokens).toBe(150);
     });
 
     it("endRound sets consensus score and updates progress", () => {
+      useArenaStore.getState().setOption("rounds", 5);
       useArenaStore.getState().startConsensus();
       useArenaStore.getState().startRound(1, "initial-analysis", "Analysis");
       useArenaStore.getState().endRound(1, 82);
 
       const s = useArenaStore.getState();
       expect(s.rounds[0].consensusScore).toBe(82);
-      expect(s.progress).toBe(1 / 5); // round 1 of 5
+      expect(s.progress).toBe(1 / 5);
     });
 
     it("completeConsensus finalizes state", () => {
       useArenaStore.getState().startConsensus();
-      useArenaStore.getState().completeConsensus(88, "Good consensus");
+      useArenaStore.getState().completeConsensus(88, "Good consensus", 5);
 
       const s = useArenaStore.getState();
       expect(s.isRunning).toBe(false);
       expect(s.finalScore).toBe(88);
       expect(s.finalSummary).toBe("Good consensus");
       expect(s.progress).toBe(1);
+      expect(s.roundsCompleted).toBe(5);
     });
 
     it("reset clears all execution state", () => {
@@ -177,6 +197,95 @@ describe("ArenaStore", () => {
       expect(s.rounds).toEqual([]);
       expect(s.progress).toBe(0);
       expect(s.finalScore).toBeNull();
+      expect(s.disagreements).toEqual([]);
+      expect(s.judge).toBeNull();
+    });
+  });
+
+  describe("disagreements, judge, early stop", () => {
+    it("addDisagreements appends items", () => {
+      useArenaStore.getState().addDisagreements(1, [
+        {
+          id: "r1-a-b",
+          round: 1,
+          participantAId: "a",
+          participantBId: "b",
+          severity: 30,
+          label: "x",
+        },
+      ]);
+      expect(useArenaStore.getState().disagreements).toHaveLength(1);
+    });
+
+    it("startJudge seeds a judge record with empty content", () => {
+      useArenaStore.getState().startJudge("openai:gpt-4o", "OpenAI");
+      const s = useArenaStore.getState();
+      expect(s.judgeRunning).toBe(true);
+      expect(s.judge?.modelId).toBe("openai:gpt-4o");
+      expect(s.judge?.providerName).toBe("OpenAI");
+    });
+
+    it("appendJudgeToken accumulates streamed judge content", () => {
+      useArenaStore.getState().startJudge("x", "X");
+      useArenaStore.getState().appendJudgeToken("Hello ");
+      useArenaStore.getState().appendJudgeToken("world");
+      expect(useArenaStore.getState().judgeStream).toBe("Hello world");
+    });
+
+    it("completeJudge stores the final result and adds its usage to the total", () => {
+      useArenaStore.getState().startJudge("x", "X");
+      useArenaStore.getState().completeJudge({
+        modelId: "x",
+        providerName: "X",
+        content: "final",
+        majorityPosition: "A",
+        minorityPositions: "B",
+        unresolvedDisputes: "",
+        usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30, estimatedCostUSD: 0.0001 },
+      });
+      const s = useArenaStore.getState();
+      expect(s.judgeRunning).toBe(false);
+      expect(s.judge?.content).toBe("final");
+      expect(s.tokenTotal.totalTokens).toBe(30);
+    });
+
+    it("setEarlyStopped records the info", () => {
+      useArenaStore.getState().setEarlyStopped({ round: 3, delta: 1, reason: "stable" });
+      expect(useArenaStore.getState().earlyStopped?.round).toBe(3);
+    });
+  });
+
+  describe("snapshot load / getSnapshot", () => {
+    it("getSnapshot returns current state shape", () => {
+      useArenaStore.getState().setPrompt("hello");
+      const snap = useArenaStore.getState().getSnapshot();
+      expect(snap.v).toBe(1);
+      expect(snap.prompt).toBe("hello");
+    });
+
+    it("loadSnapshot rehydrates and sets sharedView", () => {
+      const snap: SessionSnapshot = {
+        v: 1,
+        prompt: "shared prompt",
+        engine: "cvp",
+        options: { ...DEFAULT_OPTIONS, rounds: 3 },
+        participants: [{ id: "p-1", modelInfo: mockModel, persona }],
+        rounds: [
+          { number: 1, type: "initial-analysis", label: "A", responses: [], consensusScore: 75 },
+        ],
+        finalScore: 75,
+        finalSummary: "done",
+        judge: null,
+        disagreements: [],
+        tokenTotal: null,
+        createdAt: Date.now(),
+      };
+      useArenaStore.getState().loadSnapshot(snap);
+      const s = useArenaStore.getState();
+      expect(s.prompt).toBe("shared prompt");
+      expect(s.sharedView).toBe(true);
+      expect(s.finalScore).toBe(75);
+      expect(s.rounds).toHaveLength(1);
     });
   });
 });
