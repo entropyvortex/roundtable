@@ -429,7 +429,9 @@ ${userPrompt}
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     const msg = formatProviderError(err);
     console.error(
-      `[RoundTable] Judge error from ${resolved.providerName}/${resolved.modelId}:`,
+      "[RoundTable] Judge error from %s/%s:",
+      resolved.providerName,
+      resolved.modelId,
       err,
     );
     const tail = content.length === 0 ? `[Judge error: ${msg}]` : `\n\n[Judge error: ${msg}]`;
