@@ -36,7 +36,7 @@ No database. No auth. No external services. Just add your API keys and go.
 
 ## Screenshot
 
-![Screenshot of Web Interface](screenshots/screenshot.jpg)
+![Screenshot of Web Interface](screenshots/screenshot.jpeg)
 
 ## Consensus Validation Protocol
 
