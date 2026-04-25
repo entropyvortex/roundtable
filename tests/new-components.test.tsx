@@ -101,8 +101,13 @@ describe("ConfidenceTrajectory", () => {
 
     const { default: Comp } = await import("@/components/ConfidenceTrajectory");
     const { container } = render(<Comp />);
-    const paths = container.querySelectorAll("path");
-    expect(paths.length).toBe(2);
+    // Scope to the chart SVG so we don't count paths from the
+    // hero illustration that sits above the chart.
+    const chart = container.querySelector('svg[aria-label="Confidence trajectory chart"]');
+    expect(chart).not.toBeNull();
+    // 2 paths per participant (glow underlay + main line) × 2 participants.
+    const paths = chart!.querySelectorAll("path");
+    expect(paths.length).toBe(4);
     expect(screen.getByText("Confidence Trajectory")).toBeInTheDocument();
   });
 
@@ -211,7 +216,7 @@ describe("CostMeter", () => {
     const { default: Comp } = await import("@/components/CostMeter");
     render(<Comp />);
     expect(screen.getByText("$0.01")).toBeInTheDocument();
-    expect(screen.getByText(/2.0K tokens/)).toBeInTheDocument();
+    expect(screen.getByText(/2\.0K tok/)).toBeInTheDocument();
   });
 
   it("shows 4-decimal precision for sub-cent totals", async () => {
@@ -240,7 +245,7 @@ describe("CostMeter", () => {
     const { default: Comp } = await import("@/components/CostMeter");
     render(<Comp />);
     expect(screen.getByText("$1.23")).toBeInTheDocument();
-    expect(screen.getByText(/2.00M tokens/)).toBeInTheDocument();
+    expect(screen.getByText(/2\.00M tok/)).toBeInTheDocument();
   });
 
   it("shows running state even with zero tokens", async () => {

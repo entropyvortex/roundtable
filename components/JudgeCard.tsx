@@ -3,9 +3,6 @@
 // ─────────────────────────────────────────────────────────────
 // Judge Card — Non-voting synthesizer output
 // ─────────────────────────────────────────────────────────────
-// Renders the live judge stream (if running) or the final
-// synthesis (if complete). Does nothing if the judge was never
-// enabled for the run.
 
 import { useArenaStore } from "@/lib/store";
 import ReactMarkdown from "react-markdown";
@@ -25,21 +22,25 @@ export default function JudgeCard() {
   const displayContent = content.replace(/\nJUDGE_CONFIDENCE:\s*\d+\s*$/i, "").trim();
 
   return (
-    <div className="rounded-xl border border-arena-warning/30 bg-arena-surface overflow-hidden">
-      <div className="flex items-center gap-2.5 px-5 py-3 border-b border-arena-warning/20 bg-arena-warning/5">
-        <Gavel className="w-4 h-4 text-arena-warning" />
+    <div className="glass overflow-hidden border border-arena-warning/35 shadow-[0_0_28px_-8px_rgba(251,191,36,0.4)]">
+      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-arena-warning/20 bg-arena-warning/5">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#fbbf24] to-[#b8860b] flex items-center justify-center shadow-[0_0_14px_rgba(251,191,36,0.55)]">
+          <Gavel className="w-4 h-4 text-[#1f1300]" />
+        </div>
         <div className="flex-1">
-          <p className="text-[11px] font-semibold text-arena-warning">Consensus Judge</p>
+          <p className="text-[12px] font-semibold text-arena-warning tracking-tight">
+            Consensus Judge
+          </p>
           {judge && (
-            <p className="text-[9px] text-arena-muted">
-              {judge.providerName} &middot; {judge.modelId}
+            <p className="text-[10px] text-arena-muted mt-0.5">
+              {judge.providerName} · {judge.modelId}
             </p>
           )}
         </div>
         {running && <Loader2 className="w-3.5 h-3.5 text-arena-warning animate-spin" />}
       </div>
-      <div className="px-5 py-4 prose prose-invert prose-sm max-w-none text-arena-text/90 leading-[1.75] [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:text-arena-warning [&_h2]:mt-3 [&_h2]:mb-1 [&_strong]:text-arena-text">
-        <ReactMarkdown remarkPlugins={remarkPlugins}>{displayContent || "..."}</ReactMarkdown>
+      <div className="px-4 sm:px-6 py-4 sm:py-5 prose prose-invert prose-sm max-w-none text-arena-text/90 leading-[1.78] [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:text-arena-warning [&_h2]:mt-3 [&_h2]:mb-1 [&_strong]:text-arena-text [&_pre]:!overflow-x-auto">
+        <ReactMarkdown remarkPlugins={remarkPlugins}>{displayContent || "…"}</ReactMarkdown>
       </div>
     </div>
   );

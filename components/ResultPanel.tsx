@@ -7,9 +7,10 @@
 import { useArenaStore } from "@/lib/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useEffect, useRef, memo, useCallback, useState } from "react";
+import { useEffect, useRef, memo, useCallback, useState, useMemo } from "react";
 import JudgeCard from "./JudgeCard";
 import SessionMenu from "./SessionMenu";
+import { ConsensusRingsArt } from "./HeroArt";
 import {
   CheckCircle,
   Circle,
@@ -48,7 +49,7 @@ export default function ResultPanel() {
     scrollTimerRef.current = setTimeout(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
       scrollTimerRef.current = null;
-    }, 300);
+    }, 350);
   }, []);
 
   useEffect(() => {
@@ -67,11 +68,14 @@ export default function ResultPanel() {
   if (rounds.length === 0 && !isRunning && !judge && !judgeRunning) return null;
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-6 pb-8 space-y-8">
-      {/* Progress bar */}
-      <div className="sticky top-[53px] z-20 bg-arena-bg/95 backdrop-blur-xl py-4 -mx-6 px-6">
+    <div className="w-full space-y-7">
+      {/* Progress bar — sticky, single backdrop-filter (acceptable). */}
+      <div
+        className="sticky z-20 glass-fixed border rounded-2xl px-4 sm:px-5 py-3 sm:py-3.5 shadow-glass"
+        style={{ top: "calc(var(--rt-header-h) - 9px)" }}
+      >
         <div className="flex items-center gap-3">
-          <span className="text-[10px] text-arena-muted font-semibold uppercase tracking-[0.12em] whitespace-nowrap">
+          <span className="text-[10px] text-arena-glow font-semibold uppercase tracking-[0.18em] whitespace-nowrap">
             {isRunning ? (
               <>
                 Round {currentRound}/{roundCount}
@@ -80,23 +84,23 @@ export default function ResultPanel() {
               "Complete"
             )}
           </span>
-          <div className="flex-1 h-1 bg-arena-surface rounded-full overflow-hidden">
+          <div className="flex-1 h-1.5 bg-black/55 rounded-full overflow-hidden border border-white/[0.04]">
             <div
               className={`h-full rounded-full transition-all duration-700 ease-out ${
                 isRunning
-                  ? "bg-arena-accent"
-                  : "bg-gradient-to-r from-arena-accent to-arena-success"
+                  ? "progress-orange"
+                  : "bg-gradient-to-r from-arena-accent via-arena-glow to-arena-success"
               }`}
               style={{ width: `${progress * 100}%` }}
             />
           </div>
-          <span className="text-[10px] text-arena-muted font-mono tabular-nums w-8 text-right">
+          <span className="text-[10.5px] text-arena-text/85 font-mono tabular-nums w-9 text-right">
             {Math.round(progress * 100)}%
           </span>
           {isRunning && (
             <button
               onClick={cancelConsensus}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-arena-danger/10 border border-arena-danger/20 text-arena-danger text-[10px] font-medium hover:bg-arena-danger/20 active:scale-95 transition-all"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-arena-danger/12 border border-arena-danger/35 text-arena-danger text-[10px] font-semibold hover:bg-arena-danger/20 active:scale-95 transition-all"
               title="Cancel (Esc)"
             >
               <Square className="w-2.5 h-2.5 fill-current" />
@@ -108,28 +112,30 @@ export default function ResultPanel() {
 
       {/* Rounds */}
       {rounds.map((round) => (
-        <div key={round.number} id={`round-${round.number}`} className="space-y-5">
+        <div key={round.number} id={`round-${round.number}`} className="space-y-4 scroll-mt-32">
           <div className="flex items-center gap-3">
-            {round.number < currentRound || !isRunning ? (
-              <CheckCircle className="w-[18px] h-[18px] text-arena-success shrink-0" />
-            ) : round.number === currentRound ? (
-              <Loader2 className="w-[18px] h-[18px] text-arena-accent animate-spin shrink-0" />
-            ) : (
-              <Circle className="w-[18px] h-[18px] text-arena-muted/40 shrink-0" />
-            )}
-            <h3 className="text-[15px] font-semibold text-arena-text tracking-tight">
+            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-black/35 border border-white/[0.06]">
+              {round.number < currentRound || !isRunning ? (
+                <CheckCircle className="w-[16px] h-[16px] text-arena-success drop-shadow-[0_0_5px_rgba(52,211,153,0.55)]" />
+              ) : round.number === currentRound ? (
+                <Loader2 className="w-[16px] h-[16px] text-arena-accent animate-spin" />
+              ) : (
+                <Circle className="w-[16px] h-[16px] text-arena-muted/40" />
+              )}
+            </div>
+            <h3 className="text-[16px] font-semibold text-arena-text tracking-tight">
               Round {round.number}
               <span className="font-normal text-arena-muted ml-2">{round.label}</span>
             </h3>
             {round.consensusScore > 0 && (
-              <span className="ml-auto flex items-center gap-1 text-[10px] font-semibold text-arena-success bg-arena-success/10 px-2 py-0.5 rounded-md">
+              <span className="ml-auto flex items-center gap-1.5 text-[11px] font-semibold text-arena-success bg-arena-success/12 border border-arena-success/30 px-2.5 py-1 rounded-lg">
                 <TrendingUp className="w-3 h-3" />
                 {round.consensusScore}%
               </span>
             )}
           </div>
 
-          <div className="space-y-3 pl-7">
+          <div className="space-y-3 pl-0 sm:pl-10">
             {round.responses.map((response) => {
               const participant = participants.find((p) => p.id === response.participantId);
               if (!participant) return null;
@@ -158,13 +164,15 @@ export default function ResultPanel() {
 
       {/* Early stop notice */}
       {earlyStopped && (
-        <div className="flex items-start gap-3 rounded-xl border border-arena-warning/20 bg-arena-warning/5 px-5 py-3">
-          <ZapOff className="w-4 h-4 text-arena-warning mt-0.5 shrink-0" />
+        <div className="glass flex items-start gap-3 px-5 py-4 border border-arena-warning/35">
+          <ZapOff className="w-4 h-4 text-arena-warning mt-0.5 shrink-0 drop-shadow-[0_0_5px_rgba(251,191,36,0.55)]" />
           <div className="flex-1">
-            <p className="text-[12px] font-semibold text-arena-warning">
+            <p className="text-[12.5px] font-semibold text-arena-warning">
               Stopped early after round {earlyStopped.round}
             </p>
-            <p className="text-[11px] text-arena-muted leading-relaxed">{earlyStopped.reason}</p>
+            <p className="text-[11px] text-arena-muted leading-relaxed mt-0.5">
+              {earlyStopped.reason}
+            </p>
           </div>
         </div>
       )}
@@ -174,28 +182,33 @@ export default function ResultPanel() {
 
       {/* Final consensus */}
       {finalScore !== null && (
-        <div className="rounded-xl border border-arena-accent/20 bg-arena-surface p-7 space-y-3">
-          <div className="flex items-center gap-3">
-            <Award className="w-5 h-5 text-arena-accent" />
-            <h3 className="text-[15px] font-semibold text-arena-text tracking-tight">
-              Consensus Reached
-            </h3>
-            <span className="ml-auto text-2xl font-bold text-arena-accent font-mono tabular-nums">
-              {finalScore}%
-            </span>
-            <SessionMenu />
+        <div className="glass-strong overflow-hidden">
+          <ConsensusRingsArt className="h-[110px] sm:h-[140px]" />
+          <div className="p-5 sm:p-7 space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#ff8a3a] to-[#e25400] flex items-center justify-center shadow-glow-orange-sm">
+                <Award className="w-4.5 h-4.5 text-white" />
+              </div>
+              <h3 className="text-[16px] font-semibold text-arena-text tracking-tight">
+                Consensus Reached
+              </h3>
+              <span className="ml-auto text-3xl font-bold font-mono tabular-nums tracking-tight bg-gradient-to-br from-[#ffd0a8] via-[#ff9a4d] to-[#ff6200] bg-clip-text text-transparent">
+                {finalScore}%
+              </span>
+              <SessionMenu />
+            </div>
+            {finalSummary && (
+              <p className="text-[13px] text-arena-text/85 leading-relaxed">{finalSummary}</p>
+            )}
           </div>
-          {finalSummary && (
-            <p className="text-[13px] text-arena-muted leading-relaxed">{finalSummary}</p>
-          )}
         </div>
       )}
 
       {rounds.length > 0 && (
-        <div className="flex justify-center pt-2 pb-6">
+        <div className="flex justify-center pt-2 pb-8">
           <button
             onClick={scrollToTop}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] text-arena-muted hover:text-arena-text transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[11px] text-arena-muted hover:text-arena-glow hover:bg-white/[0.04] transition-all"
           >
             <ChevronUp className="w-3 h-3" />
             Back to top
@@ -268,7 +281,10 @@ const CompletedResponseCard = memo(function CompletedResponseCard({
   content: string;
   error?: string;
 }) {
-  const displayContent = content.replace(/\nCONFIDENCE:\s*\d+\s*$/i, "").trim();
+  const displayContent = useMemo(
+    () => content.replace(/\nCONFIDENCE:\s*\d+\s*$/i, "").trim(),
+    [content],
+  );
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -278,13 +294,21 @@ const CompletedResponseCard = memo(function CompletedResponseCard({
     });
   }, [displayContent]);
 
+  // Stable per-card style — only rebuilt when persona color changes.
+  const cardStyle = useMemo(
+    () => ({
+      boxShadow: `inset 4px 0 0 0 ${personaColor}, 0 10px 28px -10px rgba(0,0,0,0.55)`,
+    }),
+    [personaColor],
+  );
+
   if (error) {
     return (
       <div
         id={responseId}
         data-response-id={responseId}
-        className="group/card rounded-xl border border-arena-danger/40 bg-arena-danger/5 overflow-hidden scroll-mt-24 relative"
-        style={{ borderLeftColor: "#f87171", borderLeftWidth: 3 }}
+        className="group/card glass card-result overflow-hidden scroll-mt-32 relative border border-arena-danger/40"
+        style={{ boxShadow: `inset 4px 0 0 0 #f87171, 0 8px 24px -10px rgba(248,113,113,0.18)` }}
       >
         <Header
           modelName={modelName}
@@ -313,8 +337,8 @@ const CompletedResponseCard = memo(function CompletedResponseCard({
     <div
       id={responseId}
       data-response-id={responseId}
-      className="group/card rounded-xl border border-arena-border/60 bg-arena-surface overflow-hidden scroll-mt-24 transition-all hover:border-arena-border relative"
-      style={{ borderLeftColor: personaColor, borderLeftWidth: 3 }}
+      className="group/card glass card-result overflow-hidden scroll-mt-32 transition-colors hover:border-arena-blue/40 relative"
+      style={cardStyle}
     >
       <Header
         modelName={modelName}
@@ -324,18 +348,18 @@ const CompletedResponseCard = memo(function CompletedResponseCard({
         personaEmoji={personaEmoji}
         confidence={confidence}
       />
-      <div className="px-5 py-4 prose prose-invert prose-sm max-w-none text-arena-text/90 leading-[1.75] [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-medium [&_code]:text-arena-glow [&_code]:bg-arena-accent/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[12px] [&_strong]:text-arena-text [&_strong]:font-semibold">
-        <ReactMarkdown remarkPlugins={remarkPlugins}>{displayContent || "..."}</ReactMarkdown>
+      <div className="px-4 sm:px-6 py-4 sm:py-5 prose prose-invert prose-sm max-w-none text-arena-text/90 leading-[1.78] [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-medium [&_code]:text-arena-glow [&_code]:bg-arena-accent/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[12px] [&_strong]:text-arena-text [&_strong]:font-semibold [&_pre]:!my-3 [&_pre]:!overflow-x-auto">
+        <ReactMarkdown remarkPlugins={remarkPlugins}>{displayContent || "…"}</ReactMarkdown>
       </div>
-      {/* Copy button */}
       <button
         onClick={handleCopy}
-        className={`absolute bottom-3 right-3 p-1.5 rounded-md transition-all ${
+        className={`absolute bottom-3 right-3 p-1.5 rounded-lg transition-colors ${
           copied
-            ? "bg-arena-success/15 text-arena-success"
-            : "bg-arena-bg/80 text-arena-muted/40 opacity-0 group-hover/card:opacity-100 hover:text-arena-accent hover:bg-arena-accent/10"
+            ? "bg-arena-success/15 text-arena-success border border-arena-success/35"
+            : "bg-black/55 text-arena-muted/55 opacity-0 group-hover/card:opacity-100 hover:text-arena-glow hover:bg-arena-accent/12 border border-white/[0.08]"
         }`}
         title={copied ? "Copied!" : "Copy to clipboard"}
+        aria-label={copied ? "Copied to clipboard" : "Copy response"}
       >
         {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
       </button>
@@ -344,8 +368,10 @@ const CompletedResponseCard = memo(function CompletedResponseCard({
 });
 
 // ── Streaming Card ─────────────────────────────────────────
+// Memoized so only the participant whose tokens changed re-renders.
+// Stable inline style avoids object churn in the diff tree.
 
-function StreamingCard({
+const StreamingCard = memo(function StreamingCard({
   modelName,
   providerName,
   personaName,
@@ -360,10 +386,17 @@ function StreamingCard({
   personaEmoji: string;
   content: string;
 }) {
+  const cardStyle = useMemo(
+    () => ({
+      boxShadow: `inset 4px 0 0 0 ${personaColor}, 0 0 18px rgba(255,98,0,0.14)`,
+    }),
+    [personaColor],
+  );
+
   return (
     <div
-      className="rounded-xl border border-arena-accent/20 bg-arena-surface overflow-hidden"
-      style={{ borderLeftColor: personaColor, borderLeftWidth: 3 }}
+      className="glass card-streaming overflow-hidden border border-arena-accent/30"
+      style={cardStyle}
     >
       <Header
         modelName={modelName}
@@ -373,13 +406,16 @@ function StreamingCard({
         personaEmoji={personaEmoji}
         streaming
       />
-      <div className="px-5 py-4 text-[13px] text-arena-text/80 whitespace-pre-wrap break-words font-mono leading-[1.75]">
-        {content || "..."}
-        <span className="inline-block w-[6px] h-[14px] bg-arena-accent animate-pulse ml-0.5 align-middle rounded-sm" />
+      <div className="px-4 sm:px-6 py-4 sm:py-5 text-[12.5px] sm:text-[13px] text-arena-text/85 whitespace-pre-wrap break-words font-mono leading-[1.78]">
+        {content || "…"}
+        <span
+          className="inline-block w-[6px] h-[14px] bg-arena-accent ml-0.5 align-middle rounded-sm animate-pulse"
+          aria-hidden
+        />
       </div>
     </div>
   );
-}
+});
 
 // ── Header ─────────────────────────────────────────────────
 
@@ -402,30 +438,47 @@ const Header = memo(function Header({
   streaming?: boolean;
   errored?: boolean;
 }) {
+  const emojiStyle = useMemo(
+    () => ({
+      backgroundColor: `${personaColor}25`,
+      color: personaColor,
+      boxShadow: `0 0 8px ${personaColor}33`,
+    }),
+    [personaColor],
+  );
+  const confidenceStyle = useMemo(
+    () => ({
+      backgroundColor: `${personaColor}18`,
+      color: personaColor,
+      border: `1px solid ${personaColor}35`,
+    }),
+    [personaColor],
+  );
+
   return (
-    <div className="flex items-center gap-2.5 px-5 py-3 border-b border-arena-border/40 bg-arena-bg/30">
+    <div className="flex items-center gap-2.5 px-5 py-3 border-b border-white/[0.05] bg-black/40">
       <span
-        className="w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold"
-        style={{ backgroundColor: `${personaColor}20`, color: personaColor }}
+        className="w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-bold"
+        style={emojiStyle}
       >
         {personaEmoji}
       </span>
       <div className="flex-1 min-w-0">
-        <span className="text-[13px] font-medium text-arena-text">{modelName}</span>
+        <span className="text-[13px] font-semibold text-arena-text">{modelName}</span>
         <span className="text-[11px] text-arena-muted ml-2">
-          {providerName} &middot; {personaName}
+          {providerName} · {personaName}
         </span>
       </div>
       {streaming && <Loader2 className="w-3.5 h-3.5 text-arena-accent animate-spin" />}
       {errored && (
-        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md bg-arena-danger/15 text-arena-danger">
+        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md bg-arena-danger/15 text-arena-danger border border-arena-danger/30">
           ERROR
         </span>
       )}
       {!errored && confidence != null && (
         <span
-          className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md"
-          style={{ backgroundColor: `${personaColor}15`, color: personaColor }}
+          className="text-[10.5px] font-mono font-semibold px-2.5 py-1 rounded-lg"
+          style={confidenceStyle}
         >
           {confidence}%
         </span>

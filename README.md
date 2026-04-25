@@ -34,6 +34,10 @@ No database. No auth. No external services. Just add your API keys and go.
 
 ---
 
+## Screenshot
+
+![Screenshot of Web Interface](screenshots/screenshot.jpg)
+
 ## Consensus Validation Protocol
 
 ### Purpose
@@ -269,10 +273,6 @@ This is an experimental research demo with **no authentication**. Anyone who can
 The codebase has been built with defense-in-depth in mind — server-side persona rebuilds (the client cannot inject a `systemPrompt`), an axis-only custom-persona builder (no user free-text reaches the LLM), per-IP rate limiting, server-side input validation, an optional cost cap that hard-aborts a run when the running estimate crosses a USD threshold, and a strict claim-extractor parser that rejects fabricated quotes. Details and threat model in [SECURITY.md](SECURITY.md).
 
 ---
-
-## Screenshot
-
-![Screenshot of Web Interface](screenshots/newscreenshot.png)
 
 ## Features
 

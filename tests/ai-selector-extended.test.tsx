@@ -32,7 +32,7 @@ describe("AISelector — portal dropdowns", () => {
     render(<AISelector />);
 
     // Open dropdown
-    fireEvent.click(screen.getByText("Select model..."));
+    fireEvent.click(screen.getByText("Select a model…"));
 
     // Click Solo provider (1 model — should select directly)
     fireEvent.click(screen.getByText("Solo"));
@@ -46,7 +46,7 @@ describe("AISelector — portal dropdowns", () => {
     const { default: AISelector } = await import("@/components/AISelector");
     render(<AISelector />);
 
-    fireEvent.click(screen.getByText("Select model..."));
+    fireEvent.click(screen.getByText("Select a model…"));
 
     // Hover over Prov (2 models)
     fireEvent.mouseEnter(screen.getByText("Prov"));
@@ -77,14 +77,15 @@ describe("AISelector — portal dropdowns", () => {
     render(<AISelector />);
 
     // Select a model first
-    fireEvent.click(screen.getByText("Select model..."));
+    fireEvent.click(screen.getByText("Select a model…"));
     fireEvent.click(screen.getByText("Solo")); // single model, selects directly
 
     // Click add
-    fireEvent.click(screen.getByText("Add to Arena"));
+    fireEvent.click(screen.getByText("Seat at the Table"));
 
     expect(useArenaStore.getState().participants).toHaveLength(1);
-    expect(screen.getByText("Participants (1)")).toBeInTheDocument();
+    expect(screen.getByText("Participants")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
   });
 
   it("changes participant model via inline select", async () => {
@@ -132,7 +133,7 @@ describe("AISelector — portal dropdowns", () => {
     render(<AISelector />);
 
     // Open model dropdown
-    fireEvent.click(screen.getByText("Select model..."));
+    fireEvent.click(screen.getByText("Select a model…"));
     expect(screen.getByText("Providers")).toBeInTheDocument();
 
     // Click outside (on document body)
@@ -145,7 +146,7 @@ describe("AISelector — portal dropdowns", () => {
     const { default: AISelector } = await import("@/components/AISelector");
     render(<AISelector />);
 
-    fireEvent.click(screen.getByText("Select model..."));
+    fireEvent.click(screen.getByText("Select a model…"));
     fireEvent.mouseEnter(screen.getByText("Prov"));
 
     // The star icon should be present for the preferred model
