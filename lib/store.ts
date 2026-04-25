@@ -5,11 +5,11 @@
 import { create } from "zustand";
 import type {
   ArenaState,
+  ClaimDigest,
   ConsensusOptions,
   Disagreement,
+  EngineType,
   JudgeResult,
-  ModelInfo,
-  Persona,
   RoundType,
   SessionSnapshot,
   TokenUsage,
@@ -26,6 +26,10 @@ export const DEFAULT_OPTIONS: ConsensusOptions = {
   earlyStop: true,
   judgeEnabled: false,
   judgeModelId: undefined,
+  // ON by default — claim-level disagreement extraction is one of the
+  // headline features. Cost is +1 LLM call per run. The user can turn
+  // it off in the Protocol panel for cost-sensitive runs.
+  extractClaimsEnabled: true,
 };
 
 const freshUsageState = () => ({
@@ -56,6 +60,14 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
   earlyStopped: null,
   ...freshUsageState(),
 
+  claims: null,
+  claimsRunning: false,
+
+  sweepActive: false,
+  sweepEngines: [],
+  sweepCurrentIndex: 0,
+  sweepResults: [],
+
   sharedView: false,
   abortController: null,
 
@@ -64,10 +76,15 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
   setAvailableModels: (models) => set({ availableModels: models }),
   setModelsLoading: (loading) => set({ modelsLoading: loading }),
 
-  addParticipant: (model: ModelInfo, persona: Persona) => {
+  addParticipant: (model, persona, customSpec) => {
     participantCounter++;
     const id = `p-${participantCounter}`;
-    set((s) => ({ participants: [...s.participants, { id, modelInfo: model, persona }] }));
+    set((s) => ({
+      participants: [
+        ...s.participants,
+        { id, modelInfo: model, persona, ...(customSpec ? { customPersonaSpec: customSpec } : {}) },
+      ],
+    }));
   },
 
   removeParticipant: (id) =>
@@ -114,6 +131,8 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       judgeRunning: false,
       earlyStopped: null,
       ...freshUsageState(),
+      claims: null,
+      claimsRunning: false,
       sharedView: false,
       abortController: controller,
     });
@@ -123,7 +142,13 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
   cancelConsensus: () =>
     set((s) => {
       s.abortController?.abort();
-      return { isRunning: false, judgeRunning: false, abortController: null };
+      return {
+        isRunning: false,
+        judgeRunning: false,
+        judgeStream: "",
+        claimsRunning: false,
+        abortController: null,
+      };
     }),
 
   appendToken: (participantId, _round, token) =>
@@ -226,6 +251,55 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       };
     }),
 
+  startClaims: () => set({ claimsRunning: true }),
+
+  completeClaims: (digest: ClaimDigest) =>
+    set((s) => {
+      const nextTotal = digest.usage ? addUsage(s.tokenTotal, digest.usage) : s.tokenTotal;
+      return {
+        claimsRunning: false,
+        claims: digest,
+        tokenTotal: nextTotal,
+      };
+    }),
+
+  startSweep: (engines: EngineType[]) =>
+    set({
+      sweepActive: true,
+      sweepEngines: engines,
+      sweepCurrentIndex: 0,
+      sweepResults: [],
+    }),
+
+  setSweepCurrentIndex: (i: number) => set({ sweepCurrentIndex: i }),
+
+  pushSweepResult: (snapshot: SessionSnapshot) =>
+    set((s) => ({ sweepResults: [...s.sweepResults, snapshot] })),
+
+  clearSweep: () =>
+    set({
+      sweepActive: false,
+      sweepEngines: [],
+      sweepCurrentIndex: 0,
+      sweepResults: [],
+    }),
+
+  cancelSweep: () =>
+    set((s) => {
+      s.abortController?.abort();
+      return {
+        isRunning: false,
+        judgeRunning: false,
+        judgeStream: "",
+        claimsRunning: false,
+        abortController: null,
+        sweepActive: false,
+        sweepEngines: [],
+        sweepCurrentIndex: 0,
+        // Keep sweepResults so the user can still see whichever engines completed
+      };
+    }),
+
   completeConsensus: (finalScore, summary, roundsCompleted) =>
     set({
       isRunning: false,
@@ -254,6 +328,8 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
         judgeRunning: false,
         earlyStopped: null,
         ...freshUsageState(),
+        claims: null,
+        claimsRunning: false,
         sharedView: false,
         abortController: null,
       };
@@ -265,6 +341,20 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
     // Abort anything running and replace visible state with the snapshot.
     const s = get();
     s.abortController?.abort();
+
+    // Reconstruct per-participant token totals from the snapshot's
+    // round-level responses. Older code reset this to {}, which made
+    // shared-view users see 0 tokens for every participant in the
+    // floating cost meter.
+    const usageByParticipant: Record<string, TokenUsage> = {};
+    for (const round of snapshot.rounds) {
+      for (const r of round.responses) {
+        if (!r.usage) continue;
+        const prev = usageByParticipant[r.participantId] ?? ZERO_USAGE;
+        usageByParticipant[r.participantId] = addUsage(prev, r.usage);
+      }
+    }
+
     set({
       prompt: snapshot.prompt,
       participants: snapshot.participants,
@@ -278,7 +368,9 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       disagreements: snapshot.disagreements,
       earlyStopped: null,
       tokenTotal: snapshot.tokenTotal ?? { ...ZERO_USAGE },
-      usageByParticipant: {},
+      usageByParticipant,
+      claims: snapshot.claims ?? null,
+      claimsRunning: false,
       roundsCompleted: snapshot.rounds.length,
       progress: 1,
       activeStreams: {},
@@ -302,6 +394,7 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       finalSummary: s.finalSummary,
       judge: s.judge,
       disagreements: s.disagreements,
+      claims: s.claims,
       tokenTotal: s.tokenTotal,
       createdAt: Date.now(),
     };

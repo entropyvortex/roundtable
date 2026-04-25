@@ -37,6 +37,41 @@ export interface Persona {
   color: string;
   systemPrompt: string;
   description: string;
+  /** Marks server-composed personas built from an axis spec rather than a hand-written systemPrompt. */
+  custom?: boolean;
+}
+
+/**
+ * Axis levels for the custom persona builder. Three levels per axis is
+ * the sweet spot — enough variation to feel like real customization,
+ * few enough that the composed prompt stays coherent across all
+ * combinations.
+ */
+export type AxisLevel = "low" | "mid" | "high";
+
+/**
+ * A custom persona built from axis values rather than a free-text
+ * system prompt. The server combines these axis values with vetted
+ * phrase fragments to produce the actual prompt. The user never types
+ * any text that reaches the LLM directly.
+ */
+export interface CustomPersonaSpec {
+  /** Stable id — always "custom" for this version. */
+  id: "custom";
+  /** Display name (sanitised, capped to 32 chars). */
+  name: string;
+  /** Emoji glyph (capped to 4 codepoints). */
+  emoji: string;
+  /** Hex color string `#rrggbb`, validated server-side. */
+  color: string;
+  axes: {
+    riskTolerance: AxisLevel;
+    optimism: AxisLevel;
+    evidenceBar: AxisLevel;
+    formality: AxisLevel;
+    verbosity: AxisLevel;
+    contrarian: AxisLevel;
+  };
 }
 
 /** An AI participant in the consensus process */
@@ -44,6 +79,13 @@ export interface Participant {
   id: string;
   modelInfo: ModelInfo;
   persona: Persona;
+  /**
+   * If `persona.id === "custom"`, this carries the axis spec the
+   * server uses to compose the system prompt. The client-supplied
+   * `persona.systemPrompt` is ignored either way — the server
+   * rebuilds it from this spec on every request.
+   */
+  customPersonaSpec?: CustomPersonaSpec;
 }
 
 /** Token usage for a single AI call */
@@ -84,7 +126,7 @@ export type RoundType =
   | "synthesis";
 
 /** Which engine to run */
-export type EngineType = "cvp" | "blind-jury";
+export type EngineType = "cvp" | "blind-jury" | "adversarial";
 
 /** A detected disagreement between participants in a round */
 export interface Disagreement {
@@ -110,6 +152,36 @@ export interface JudgeResult {
 }
 
 /**
+ * One claim-level contradiction extracted from a completed run. Unlike
+ * the confidence-spread `Disagreement` (which only knows pairs of
+ * participants whose self-reported confidence diverged), a Claim is
+ * a *semantic* contradiction extracted from the actual response text.
+ */
+export interface ClaimContradiction {
+  id: string;
+  /** One-line summary of what the contradiction is about. */
+  claim: string;
+  /** Each "side" lists the participants that took it and a verbatim quote per side. */
+  sides: Array<{
+    stance: string;
+    participantIds: string[];
+    quote: string;
+  }>;
+}
+
+/** Result of the claim-extraction LLM pass. */
+export interface ClaimDigest {
+  modelId: string;
+  providerName: string;
+  contradictions: ClaimContradiction[];
+  /** Raw model output, kept for transparency / fallback rendering. */
+  rawContent: string;
+  /** Set when the extractor pass failed (provider error, abort, etc.). */
+  error?: string;
+  usage?: TokenUsage;
+}
+
+/**
  * User-configurable options for a consensus run.
  * Every field is optional on the wire — defaults are applied server-side.
  */
@@ -127,6 +199,14 @@ export interface ConsensusOptions {
   judgeEnabled: boolean;
   /** Composite model id (provider:model) to use for the judge */
   judgeModelId?: string;
+  /** Run a claim-level contradiction extraction pass at the end of the run */
+  extractClaimsEnabled?: boolean;
+  /**
+   * Hard abort the run when total estimated cost crosses this USD
+   * threshold. Undefined / 0 disables the cap. The engine checks
+   * after every participant round and after judge / claims passes.
+   */
+  costCapUSD?: number;
 }
 
 /** SSE event types streamed from /api/consensus */
@@ -155,6 +235,8 @@ export type ConsensusEvent =
   | { type: "judge-start"; modelId: string; providerName: string }
   | { type: "judge-token"; token: string }
   | { type: "judge-end"; result: JudgeResult }
+  | { type: "claims-start"; modelId: string; providerName: string }
+  | { type: "claims-end"; digest: ClaimDigest }
   | {
       type: "consensus-complete";
       finalScore: number;
@@ -182,6 +264,8 @@ export interface SessionSnapshot {
   finalSummary: string | null;
   judge: JudgeResult | null;
   disagreements: Disagreement[];
+  /** Optional — older permalinks predate the claim-extraction feature. */
+  claims?: ClaimDigest | null;
   tokenTotal: TokenUsage | null;
   createdAt: number;
 }
@@ -216,6 +300,16 @@ export interface ArenaState {
   tokenTotal: TokenUsage;
   usageByParticipant: Record<string, TokenUsage>;
 
+  // Claim-level disagreement extraction
+  claims: ClaimDigest | null;
+  claimsRunning: boolean;
+
+  // Engine Sweep Mode
+  sweepActive: boolean;
+  sweepEngines: EngineType[];
+  sweepCurrentIndex: number;
+  sweepResults: SessionSnapshot[];
+
   // Shared-session replay flag
   sharedView: boolean;
 
@@ -225,7 +319,7 @@ export interface ArenaState {
   // Actions — configuration
   setAvailableModels: (models: ModelInfo[]) => void;
   setModelsLoading: (loading: boolean) => void;
-  addParticipant: (model: ModelInfo, persona: Persona) => void;
+  addParticipant: (model: ModelInfo, persona: Persona, customSpec?: CustomPersonaSpec) => void;
   removeParticipant: (id: string) => void;
   updateParticipantPersona: (id: string, persona: Persona) => void;
   updateParticipantModel: (id: string, model: ModelInfo) => void;
@@ -253,6 +347,14 @@ export interface ArenaState {
   startJudge: (modelId: string, providerName: string) => void;
   appendJudgeToken: (token: string) => void;
   completeJudge: (result: JudgeResult) => void;
+  startClaims: (modelId: string, providerName: string) => void;
+  completeClaims: (digest: ClaimDigest) => void;
+  startSweep: (engines: EngineType[]) => void;
+  setSweepCurrentIndex: (i: number) => void;
+  pushSweepResult: (snapshot: SessionSnapshot) => void;
+  clearSweep: () => void;
+  /** Abort the current run AND tear down sweep state in one click. */
+  cancelSweep: () => void;
   completeConsensus: (finalScore: number, summary: string, roundsCompleted: number) => void;
   reset: () => void;
 
