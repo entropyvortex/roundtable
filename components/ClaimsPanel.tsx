@@ -20,7 +20,9 @@ function scrollToResponse(participantIds: string[]) {
   if (participantIds.length === 0) return;
   // Find any matching response card on the page.
   const matches = participantIds
-    .flatMap((pid) => Array.from(document.querySelectorAll<HTMLElement>(`[data-response-id$="-${pid}"]`)))
+    .flatMap((pid) =>
+      Array.from(document.querySelectorAll<HTMLElement>(`[data-response-id$="-${pid}"]`)),
+    )
     .sort((a, b) => {
       const ar = parseInt(a.getAttribute("data-response-id")?.match(/^r(\d+)/)?.[1] ?? "0", 10);
       const br = parseInt(b.getAttribute("data-response-id")?.match(/^r(\d+)/)?.[1] ?? "0", 10);
@@ -131,10 +133,7 @@ export default function ClaimsPanel() {
                     />
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-1">
-                        <span
-                          className="text-[10px] font-medium"
-                          style={{ color }}
-                        >
+                        <span className="text-[10px] font-medium" style={{ color }}>
                           {side.stance}
                         </span>
                         <span className="text-[9px] text-arena-muted/70">

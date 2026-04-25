@@ -123,10 +123,10 @@ If your report is sensitive, mark it as such and the maintainer will respond bef
 
 ## Security-relevant files
 
-| File                              | Role                                                                              |
-| --------------------------------- | --------------------------------------------------------------------------------- |
-| `app/api/consensus/route.ts`      | Input validation, rate limiting, persona / model re-verification, error funnel    |
-| `lib/providers.ts`                | API key resolution, never-leak-to-client model list                               |
-| `lib/personas.ts`                 | Server-side persona registry, axis-only custom-persona composer, sanitiser        |
-| `lib/consensus-engine.ts`         | Cost cap enforcement, claim-extractor parser, error formatting                    |
-| `components/PersonaBuilder.tsx`   | Client-side builder UI — does not generate any LLM-bound text outside the spec    |
+| File                            | Role                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `app/api/consensus/route.ts`    | Input validation, rate limiting, persona / model re-verification, error funnel |
+| `lib/providers.ts`              | API key resolution, never-leak-to-client model list                            |
+| `lib/personas.ts`               | Server-side persona registry, axis-only custom-persona composer, sanitiser     |
+| `lib/consensus-engine.ts`       | Cost cap enforcement, claim-extractor parser, error formatting                 |
+| `components/PersonaBuilder.tsx` | Client-side builder UI — does not generate any LLM-bound text outside the spec |

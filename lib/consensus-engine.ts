@@ -42,9 +42,7 @@ export class CostCapExceededError extends Error {
     public readonly runningCostUSD: number,
     public readonly capUSD: number,
   ) {
-    super(
-      `Cost cap exceeded: estimated $${runningCostUSD.toFixed(4)} > $${capUSD.toFixed(4)} cap`,
-    );
+    super(`Cost cap exceeded: estimated $${runningCostUSD.toFixed(4)} > $${capUSD.toFixed(4)} cap`);
     this.name = "CostCapExceededError";
   }
 }
@@ -123,10 +121,7 @@ CONFIDENCE: [number 0-100]`;
 
 // ── Adversarial Red Team prompt builders ───────────────────
 
-function buildAdversarialInitialPrompt(
-  persona: string,
-  totalRounds: number,
-): string {
+function buildAdversarialInitialPrompt(persona: string, totalRounds: number): string {
   return `${persona}
 
 This is Round 1/${totalRounds} of an ADVERSARIAL RED TEAM debate.

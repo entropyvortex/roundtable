@@ -728,9 +728,7 @@ describe("consensus-engine", () => {
     const systemPrompts = calls.map((c) => c[0].system as string);
     const attackerPrompts = systemPrompts.filter((p) => p.includes("RED TEAM ATTACKER"));
     const defenderPrompts = systemPrompts.filter((p) => p.includes("DEFENDER this round"));
-    const finalPrompts = systemPrompts.filter((p) =>
-      p.includes("FINAL POST-STRESS SYNTHESIS"),
-    );
+    const finalPrompts = systemPrompts.filter((p) => p.includes("FINAL POST-STRESS SYNTHESIS"));
     expect(attackerPrompts).toHaveLength(1);
     expect(defenderPrompts).toHaveLength(1);
     expect(finalPrompts).toHaveLength(2);
@@ -870,8 +868,14 @@ describe("consensus-engine", () => {
     const raw = `{"contradictions":[{"claim":"X","sides":[{"stance":"yes","participantIds":["p-1"],"quote":"This is a long quote that should appear in p-1's actual content extensively"},{"stance":"no","participantIds":["p-2"],"quote":"This is a different long quote that should match p-2 content directly here"}]}]}`;
     // Both quotes present in their participants' content → kept
     const goodMap = new Map([
-      ["p-1", "Some preface. This is a long quote that should appear in p-1's actual content extensively. Some suffix."],
-      ["p-2", "Header. This is a different long quote that should match p-2 content directly here. Footer."],
+      [
+        "p-1",
+        "Some preface. This is a long quote that should appear in p-1's actual content extensively. Some suffix.",
+      ],
+      [
+        "p-2",
+        "Header. This is a different long quote that should match p-2 content directly here. Footer.",
+      ],
     ]);
     const out = __testing.parseClaimsJSON(raw, new Set(["p-1", "p-2"]), goodMap);
     expect(out).toHaveLength(1);
@@ -970,7 +974,9 @@ describe("consensus-engine", () => {
     // pricing entry. We'll mock findResolvedModel to return one.
     const providers = await import("@/lib/providers");
     const original = providers.findResolvedModel;
-    (providers as { findResolvedModel: (id: string) => unknown }).findResolvedModel = (id: string) => {
+    (providers as { findResolvedModel: (id: string) => unknown }).findResolvedModel = (
+      id: string,
+    ) => {
       if (id === "missing:model") return undefined;
       return {
         providerId: "openai",

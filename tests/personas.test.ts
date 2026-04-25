@@ -71,7 +71,9 @@ describe("custom persona builder", () => {
   });
 
   it("sanitizeCustomPersonaSpec rejects mismatched id", () => {
-    expect(sanitizeCustomPersonaSpec({ ...DEFAULT_CUSTOM_SPEC, id: "first-principles" })).toBeNull();
+    expect(
+      sanitizeCustomPersonaSpec({ ...DEFAULT_CUSTOM_SPEC, id: "first-principles" }),
+    ).toBeNull();
   });
 
   it("sanitizeCustomPersonaSpec rejects names that become empty after sanitisation", () => {

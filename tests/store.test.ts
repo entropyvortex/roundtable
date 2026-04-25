@@ -352,8 +352,22 @@ describe("ArenaStore", () => {
             label: "R1",
             consensusScore: 70,
             responses: [
-              { participantId: "p-a", roundNumber: 1, content: "", confidence: 70, timestamp: 0, usage: u(0.01) },
-              { participantId: "p-b", roundNumber: 1, content: "", confidence: 80, timestamp: 0, usage: u(0.02) },
+              {
+                participantId: "p-a",
+                roundNumber: 1,
+                content: "",
+                confidence: 70,
+                timestamp: 0,
+                usage: u(0.01),
+              },
+              {
+                participantId: "p-b",
+                roundNumber: 1,
+                content: "",
+                confidence: 80,
+                timestamp: 0,
+                usage: u(0.02),
+              },
             ],
           },
           {
@@ -362,8 +376,22 @@ describe("ArenaStore", () => {
             label: "R2",
             consensusScore: 75,
             responses: [
-              { participantId: "p-a", roundNumber: 2, content: "", confidence: 75, timestamp: 0, usage: u(0.03) },
-              { participantId: "p-b", roundNumber: 2, content: "", confidence: 80, timestamp: 0, usage: u(0.04) },
+              {
+                participantId: "p-a",
+                roundNumber: 2,
+                content: "",
+                confidence: 75,
+                timestamp: 0,
+                usage: u(0.03),
+              },
+              {
+                participantId: "p-b",
+                roundNumber: 2,
+                content: "",
+                confidence: 80,
+                timestamp: 0,
+                usage: u(0.04),
+              },
             ],
           },
         ],
@@ -371,7 +399,12 @@ describe("ArenaStore", () => {
         finalSummary: "done",
         judge: null,
         disagreements: [],
-        tokenTotal: { inputTokens: 400, outputTokens: 200, totalTokens: 600, estimatedCostUSD: 0.1 },
+        tokenTotal: {
+          inputTokens: 400,
+          outputTokens: 200,
+          totalTokens: 600,
+          estimatedCostUSD: 0.1,
+        },
         createdAt: Date.now(),
       };
       useArenaStore.getState().loadSnapshot(snap);

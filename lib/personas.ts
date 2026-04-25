@@ -184,7 +184,10 @@ export function sanitizeCustomPersonaSpec(input: unknown): CustomPersonaSpec | n
   // safe punctuation. Blocks newline / control / brace / quote injection
   // into the composed prompt and keeps the name from carrying anything
   // that could be read as an instruction by the LLM.
-  const cleanName = rawName.replace(/[^\p{L}\p{N} _\-.\u0027]/gu, "").trim().slice(0, NAME_MAX);
+  const cleanName = rawName
+    .replace(/[^\p{L}\p{N} _\-.\u0027]/gu, "")
+    .trim()
+    .slice(0, NAME_MAX);
   if (cleanName.length === 0) return null;
 
   const rawEmoji = typeof raw.emoji === "string" ? raw.emoji : "🎛️";

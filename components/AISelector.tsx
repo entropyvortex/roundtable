@@ -318,8 +318,7 @@ export default function AISelector() {
                       Build a custom persona…
                     </p>
                     <p className="text-[9px] text-arena-muted mt-0.5 line-clamp-1">
-                      Tune 6 axes (risk, optimism, evidence bar, …) — server-composed, no free
-                      text.
+                      Tune 6 axes (risk, optimism, evidence bar, …) — server-composed, no free text.
                     </p>
                   </div>
                 </button>

@@ -27,20 +27,7 @@ const COLOR_PRESETS = [
   "#94a3b8",
 ];
 
-const EMOJI_PRESETS = [
-  "🎛️",
-  "🧭",
-  "🦉",
-  "🦊",
-  "🐙",
-  "🦄",
-  "🌱",
-  "🛡️",
-  "🏛️",
-  "💡",
-  "🧪",
-  "🪞",
-];
+const EMOJI_PRESETS = ["🎛️", "🧭", "🦉", "🦊", "🐙", "🦄", "🌱", "🛡️", "🏛️", "💡", "🧪", "🪞"];
 
 const STORAGE_KEY = "roundtable.customPersonaSpec.v1";
 const MAX_NAME_LEN = 32;
@@ -108,9 +95,7 @@ export default function PersonaBuilder({ initial, onSave, onCancel }: PersonaBui
         <input
           type="text"
           value={spec.name}
-          onChange={(e) =>
-            setSpec((s) => ({ ...s, name: e.target.value.slice(0, MAX_NAME_LEN) }))
-          }
+          onChange={(e) => setSpec((s) => ({ ...s, name: e.target.value.slice(0, MAX_NAME_LEN) }))}
           maxLength={MAX_NAME_LEN}
           placeholder="Custom Participant"
           className="w-full bg-arena-bg border border-arena-border rounded-lg px-3 py-1.5 text-[12px] text-arena-text placeholder:text-arena-muted/40 focus:outline-none focus:border-arena-accent/60"
@@ -152,7 +137,10 @@ export default function PersonaBuilder({ initial, onSave, onCancel }: PersonaBui
                 className={`w-6 h-6 rounded-md transition-all ${
                   spec.color === c ? "ring-2 ring-offset-1 ring-offset-arena-surface" : ""
                 }`}
-                style={{ backgroundColor: c, boxShadow: spec.color === c ? `0 0 0 1px ${c}` : undefined }}
+                style={{
+                  backgroundColor: c,
+                  boxShadow: spec.color === c ? `0 0 0 1px ${c}` : undefined,
+                }}
                 aria-label={`Pick color ${c}`}
               />
             ))}

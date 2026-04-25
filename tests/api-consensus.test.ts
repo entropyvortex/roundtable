@@ -12,8 +12,7 @@ vi.mock("@/lib/consensus-engine", () => ({
 // Use the real composeCustomPersona / sanitizeCustomPersonaSpec so we
 // can assert end-to-end that bad specs are rejected with HTTP 400.
 vi.mock("@/lib/personas", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/lib/personas")>("@/lib/personas");
+  const actual = await vi.importActual<typeof import("@/lib/personas")>("@/lib/personas");
   return {
     ...actual,
     getPersona: () => ({

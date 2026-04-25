@@ -40,9 +40,7 @@ export default function SweepResultsPanel() {
     <div className="w-full max-w-7xl mx-auto px-6 pb-8 space-y-4">
       <div className="flex items-center gap-3">
         <Layers className="w-4 h-4 text-arena-accent" />
-        <h3 className="text-[13px] font-semibold text-arena-text tracking-tight">
-          Engine Sweep
-        </h3>
+        <h3 className="text-[13px] font-semibold text-arena-text tracking-tight">Engine Sweep</h3>
         <span className="text-[10px] text-arena-muted tabular-nums">
           {sweepResults.length}/{sweepEngines.length} complete
         </span>
@@ -65,12 +63,7 @@ export default function SweepResultsPanel() {
           const snapshot = sweepResults[i];
           const isCurrent = sweepActive && i === sweepCurrentIndex && isRunning;
           return (
-            <SweepColumn
-              key={engine}
-              engine={engine}
-              snapshot={snapshot}
-              isCurrent={isCurrent}
-            />
+            <SweepColumn key={engine} engine={engine} snapshot={snapshot} isCurrent={isCurrent} />
           );
         })}
       </div>
@@ -100,9 +93,7 @@ function SweepColumn({
       <div className="flex items-center gap-2">
         <div className="flex-1">
           <p className="text-[11px] font-semibold text-arena-text">{ENGINE_LABEL[engine]}</p>
-          <p className="text-[9px] text-arena-muted leading-tight">
-            {ENGINE_DESCRIPTION[engine]}
-          </p>
+          <p className="text-[9px] text-arena-muted leading-tight">{ENGINE_DESCRIPTION[engine]}</p>
         </div>
         {isCurrent ? (
           <div className="flex items-center gap-1 text-[9px] text-arena-accent">
@@ -166,7 +157,9 @@ function SweepColumn({
 
           {snapshot.disagreements.length > 0 && (
             <div className="text-[10px] text-arena-muted">
-              <span className="font-medium text-arena-warning">{snapshot.disagreements.length}</span>{" "}
+              <span className="font-medium text-arena-warning">
+                {snapshot.disagreements.length}
+              </span>{" "}
               confidence-spread disagreement
               {snapshot.disagreements.length === 1 ? "" : "s"} flagged
             </div>
