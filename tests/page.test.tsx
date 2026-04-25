@@ -78,16 +78,16 @@ describe("HomePage", () => {
   it("shows onboarding overlay on first visit", async () => {
     const { default: HomePage } = await import("@/app/page");
     render(<HomePage />);
-    expect(screen.getByText("Add Participants to Begin")).toBeInTheDocument();
+    expect(screen.getByText("Convene the RoundTable")).toBeInTheDocument();
   });
 
   it("dismisses onboarding on click", async () => {
     const { default: HomePage } = await import("@/app/page");
     render(<HomePage />);
-    const overlay = screen.getByText("Add Participants to Begin").closest("[class*='fixed']");
+    const overlay = screen.getByText("Convene the RoundTable").closest("[class*='fixed']");
     if (overlay) fireEvent.click(overlay);
     await waitFor(() => {
-      expect(screen.queryByText("Add Participants to Begin")).not.toBeInTheDocument();
+      expect(screen.queryByText("Convene the RoundTable")).not.toBeInTheDocument();
     });
   });
 
@@ -137,7 +137,8 @@ describe("HomePage", () => {
     useArenaStore.setState({ finalScore: 88 });
     render(<HomePage />);
 
-    expect(screen.getByText("Final Consensus: 88%")).toBeInTheDocument();
+    expect(screen.getByText("Final Consensus")).toBeInTheDocument();
+    expect(screen.getByText("88%")).toBeInTheDocument();
   });
 
   it("fetches providers on mount", async () => {
@@ -161,7 +162,7 @@ describe("HomePage", () => {
   it("shows askgrokmcp link in header", async () => {
     const { default: HomePage } = await import("@/app/page");
     render(<HomePage />);
-    const link = screen.getByText("Protocol inspired by askgrokmcp");
+    const link = screen.getByText(/Protocol inspired by askgrokmcp/);
     expect(link).toHaveAttribute("href", "https://github.com/marceloceccon/askgrokmcp");
   });
 
@@ -176,6 +177,6 @@ describe("HomePage", () => {
     const { default: HomePage } = await import("@/app/page");
     useArenaStore.setState({ finalScore: 90 });
     render(<HomePage />);
-    expect(screen.getByText("Reset")).toBeInTheDocument();
+    expect(screen.getByText(/Reset session/)).toBeInTheDocument();
   });
 });

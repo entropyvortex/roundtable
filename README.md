@@ -34,6 +34,10 @@ No database. No auth. No external services. Just add your API keys and go.
 
 ---
 
+## Screenshot
+
+![Screenshot of Web Interface](screenshots/screenshot.jpg)
+
 ## Consensus Validation Protocol
 
 ### Purpose
@@ -224,10 +228,6 @@ The following are deliberate non-goals for v1 but would further tighten the prot
 This is experimental, it has no authentication protection, if you publish this with your keys, someone could burn your tokens/exploit to process their prompts out of curiosity or malice.
 
 ---
-
-## Screenshot
-
-![Screenshot of Web Interface](screenshots/newscreenshot.png)
 
 ## Features
 

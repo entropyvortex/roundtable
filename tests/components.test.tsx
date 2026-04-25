@@ -197,7 +197,7 @@ describe("AISelector", () => {
     useArenaStore.setState({ modelsLoading: true });
 
     render(<AISelector />);
-    expect(screen.getByText("Fetching providers...")).toBeInTheDocument();
+    expect(screen.getByText("Fetching providers…")).toBeInTheDocument();
   });
 
   it("shows error when no models available", async () => {
@@ -212,15 +212,15 @@ describe("AISelector", () => {
     const { default: AISelector } = await import("@/components/AISelector");
 
     render(<AISelector />);
-    expect(screen.getByText("Select model...")).toBeInTheDocument();
-    expect(screen.getByText("Add to Arena")).toBeInTheDocument();
+    expect(screen.getByText("Select a model…")).toBeInTheDocument();
+    expect(screen.getByText("Seat at the Table")).toBeInTheDocument();
   });
 
   it("add button is disabled without model selection", async () => {
     const { default: AISelector } = await import("@/components/AISelector");
 
     render(<AISelector />);
-    const addBtn = screen.getByText("Add to Arena").closest("button");
+    const addBtn = screen.getByText("Seat at the Table").closest("button");
     expect(addBtn).toBeDisabled();
   });
 
@@ -231,6 +231,7 @@ describe("AISelector", () => {
     useArenaStore.getState().addParticipant(mockModel2, PERSONAS[1]);
 
     render(<AISelector />);
-    expect(screen.getByText("Participants (2)")).toBeInTheDocument();
+    expect(screen.getByText("Participants")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
   });
 });

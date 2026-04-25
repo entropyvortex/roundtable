@@ -44,7 +44,7 @@ describe("AISelector — interactions", () => {
     const { default: AISelector } = await import("@/components/AISelector");
     render(<AISelector />);
 
-    fireEvent.click(screen.getByText("Select model..."));
+    fireEvent.click(screen.getByText("Select a model…"));
     expect(screen.getByText("Providers")).toBeInTheDocument();
   });
 
@@ -52,7 +52,7 @@ describe("AISelector — interactions", () => {
     const { default: AISelector } = await import("@/components/AISelector");
     render(<AISelector />);
 
-    fireEvent.click(screen.getByText("Select model..."));
+    fireEvent.click(screen.getByText("Select a model…"));
     expect(screen.getByText("Prov")).toBeInTheDocument();
     expect(screen.getByText("Other")).toBeInTheDocument();
   });
@@ -87,7 +87,7 @@ describe("AISelector — interactions", () => {
     const { default: AISelector } = await import("@/components/AISelector");
     render(<AISelector />);
 
-    fireEvent.click(screen.getByText("Select model..."));
+    fireEvent.click(screen.getByText("Select a model…"));
     expect(screen.getByText("Providers")).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
@@ -100,7 +100,7 @@ describe("AISelector — interactions", () => {
     useArenaStore.setState({ isRunning: true });
 
     render(<AISelector />);
-    const addBtn = screen.getByText("Add to Arena").closest("button");
+    const addBtn = screen.getByText("Seat at the Table").closest("button");
     expect(addBtn).toBeDisabled();
   });
 
@@ -108,7 +108,7 @@ describe("AISelector — interactions", () => {
     const { default: AISelector } = await import("@/components/AISelector");
     render(<AISelector />);
 
-    fireEvent.click(screen.getByText("Select model..."));
+    fireEvent.click(screen.getByText("Select a model…"));
     expect(screen.getByText("2 models")).toBeInTheDocument(); // prov has 2
     expect(screen.getByText("1 model")).toBeInTheDocument(); // other has 1
   });
