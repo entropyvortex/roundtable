@@ -854,7 +854,9 @@ async function runClaimExtractor(
     if (err instanceof DOMException && err.name === "AbortError") throw err;
     errorMessage = formatProviderError(err);
     console.error(
-      `[RoundTable] Claim extractor error from ${resolved.providerName}/${resolved.modelId}:`,
+      "[RoundTable] Claim extractor error from %s/%s:",
+      resolved.providerName,
+      resolved.modelId,
       err,
     );
     // Soft-fail — emit an empty digest rather than dropping the whole run.
