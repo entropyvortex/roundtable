@@ -170,7 +170,9 @@ export default function ResultPanel() {
             <p className="text-[12.5px] font-semibold text-arena-warning">
               Stopped early after round {earlyStopped.round}
             </p>
-            <p className="text-[11px] text-arena-muted leading-relaxed mt-0.5">{earlyStopped.reason}</p>
+            <p className="text-[11px] text-arena-muted leading-relaxed mt-0.5">
+              {earlyStopped.reason}
+            </p>
           </div>
         </div>
       )}

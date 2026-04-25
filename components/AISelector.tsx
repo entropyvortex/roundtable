@@ -459,14 +459,14 @@ function ModelList({
             key={m.id}
             onClick={() => onSelect(m)}
             className={`w-full flex items-center gap-2 px-3.5 py-2 text-[12px] transition-all ${
-              isSel
-                ? "bg-arena-accent/12 text-arena-glow"
-                : "text-arena-text hover:bg-white/[0.03]"
+              isSel ? "bg-arena-accent/12 text-arena-glow" : "text-arena-text hover:bg-white/[0.03]"
             }`}
           >
             <Star className="w-3 h-3 shrink-0 text-arena-accent fill-arena-accent drop-shadow-[0_0_4px_rgba(255,98,0,0.6)]" />
             <span className="flex-1 text-left font-medium text-[11.5px] truncate">{m.modelId}</span>
-            {isSel && <div className="w-1.5 h-1.5 rounded-full bg-arena-accent shadow-glow-orange-sm" />}
+            {isSel && (
+              <div className="w-1.5 h-1.5 rounded-full bg-arena-accent shadow-glow-orange-sm" />
+            )}
           </button>
         );
       })}
@@ -489,7 +489,9 @@ function ModelList({
               className={`w-3 h-3 shrink-0 ${isSel ? "text-arena-accent" : "text-arena-muted/45"}`}
             />
             <span className="flex-1 text-left text-[11.5px] truncate">{m.modelId}</span>
-            {isSel && <div className="w-1.5 h-1.5 rounded-full bg-arena-accent shadow-glow-orange-sm" />}
+            {isSel && (
+              <div className="w-1.5 h-1.5 rounded-full bg-arena-accent shadow-glow-orange-sm" />
+            )}
           </button>
         );
       })}
@@ -523,8 +525,7 @@ function ParticipantCard({
     <div
       className="relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 group transition-all overflow-hidden"
       style={{
-        background:
-          "linear-gradient(135deg, rgba(8, 22, 52, 0.55), rgba(4, 12, 30, 0.55))",
+        background: "linear-gradient(135deg, rgba(8, 22, 52, 0.55), rgba(4, 12, 30, 0.55))",
         border: `1px solid rgba(77, 122, 199, 0.18)`,
         boxShadow: `inset 3px 0 0 0 ${participant.persona.color}`,
         backdropFilter: "blur(12px)",

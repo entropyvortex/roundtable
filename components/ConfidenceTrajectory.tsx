@@ -118,7 +118,13 @@ export default function ConfidenceTrajectory() {
                   />
                   {points.map((p, i) => (
                     <g key={i}>
-                      <circle cx={xFor(i)} cy={yFor(p)} r={4} fill={participant.persona.color} opacity="0.25" />
+                      <circle
+                        cx={xFor(i)}
+                        cy={yFor(p)}
+                        r={4}
+                        fill={participant.persona.color}
+                        opacity="0.25"
+                      />
                       <circle cx={xFor(i)} cy={yFor(p)} r={2.2} fill={participant.persona.color}>
                         <title>
                           {participant.persona.name} — Round {i + 1}: {p}%

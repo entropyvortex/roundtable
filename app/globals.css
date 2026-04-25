@@ -26,7 +26,13 @@ html,
 body {
   background: var(--rt-bg);
   color: var(--rt-text);
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
   font-feature-settings: "ss01", "cv11", "cv02";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -40,8 +46,8 @@ body {
   isolation: isolate;
   background:
     radial-gradient(ellipse 90% 60% at 18% 4%, rgba(0, 48, 135, 0.38), transparent 65%),
-    radial-gradient(ellipse 70% 50% at 88% 12%, rgba(255, 98, 0, 0.10), transparent 60%),
-    radial-gradient(ellipse 100% 70% at 50% 110%, rgba(0, 48, 135, 0.30), transparent 70%),
+    radial-gradient(ellipse 70% 50% at 88% 12%, rgba(255, 98, 0, 0.1), transparent 60%),
+    radial-gradient(ellipse 100% 70% at 50% 110%, rgba(0, 48, 135, 0.3), transparent 70%),
     linear-gradient(180deg, #02070f 0%, #030a1c 35%, #050e26 70%, #02070f 100%);
 }
 
@@ -56,7 +62,7 @@ body {
   background:
     radial-gradient(ellipse 60% 22% at 30% 8%, rgba(255, 98, 0, 0.22), transparent 72%),
     radial-gradient(ellipse 55% 18% at 65% 14%, rgba(255, 154, 77, 0.18), transparent 75%),
-    radial-gradient(ellipse 50% 14% at 50% 22%, rgba(255, 98, 0, 0.10), transparent 80%);
+    radial-gradient(ellipse 50% 14% at 50% 22%, rgba(255, 98, 0, 0.1), transparent 80%);
   filter: blur(2px);
   opacity: 0.95;
   contain: paint;
@@ -73,9 +79,9 @@ body {
     linear-gradient(
       105deg,
       transparent 38%,
-      rgba(255, 138, 51, 0.10) 48%,
+      rgba(255, 138, 51, 0.1) 48%,
       rgba(255, 98, 0, 0.16) 50%,
-      rgba(255, 138, 51, 0.10) 52%,
+      rgba(255, 138, 51, 0.1) 52%,
       transparent 62%
     ),
     linear-gradient(
@@ -170,12 +176,22 @@ body {
 }
 
 @keyframes orbFloat1 {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  50% { transform: translate3d(40px, 30px, 0); }
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(40px, 30px, 0);
+  }
 }
 @keyframes orbFloat2 {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  50% { transform: translate3d(-36px, -22px, 0); }
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(-36px, -22px, 0);
+  }
 }
 
 /* ── Reduced-motion override ───────────────────────────── */
@@ -190,14 +206,23 @@ body {
     animation: none !important;
     transition: none !important;
   }
-  .cosmic-stars { opacity: 0.7; }
+  .cosmic-stars {
+    opacity: 0.7;
+  }
 }
 
 /* Phones: lower the cost ceiling further. */
 @media (hover: none) and (max-width: 640px) {
-  .cosmic-shell::after { animation-duration: 60s; opacity: 0.45; }
-  .cosmic-orbs::before { filter: blur(40px); }
-  .cosmic-orbs::after { filter: blur(40px); }
+  .cosmic-shell::after {
+    animation-duration: 60s;
+    opacity: 0.45;
+  }
+  .cosmic-orbs::before {
+    filter: blur(40px);
+  }
+  .cosmic-orbs::after {
+    filter: blur(40px);
+  }
 }
 
 /* ── Glass utilities ─────────────────────────────────────
@@ -211,8 +236,7 @@ body {
    background while keeping compositing cheap.            */
 
 .glass {
-  background:
-    linear-gradient(135deg, rgba(8, 22, 52, 0.85) 0%, rgba(4, 12, 30, 0.92) 100%);
+  background: linear-gradient(135deg, rgba(8, 22, 52, 0.85) 0%, rgba(4, 12, 30, 0.92) 100%);
   border: 1px solid rgba(77, 122, 199, 0.22);
   border-radius: 22px;
   box-shadow:
@@ -221,8 +245,7 @@ body {
 }
 
 .glass-soft {
-  background:
-    linear-gradient(135deg, rgba(8, 22, 52, 0.78) 0%, rgba(4, 12, 30, 0.85) 100%);
+  background: linear-gradient(135deg, rgba(8, 22, 52, 0.78) 0%, rgba(4, 12, 30, 0.85) 100%);
   border: 1px solid rgba(77, 122, 199, 0.16);
   border-radius: 18px;
   box-shadow:
@@ -231,8 +254,7 @@ body {
 }
 
 .glass-strong {
-  background:
-    linear-gradient(135deg, rgba(10, 26, 60, 0.92) 0%, rgba(5, 14, 36, 0.96) 100%);
+  background: linear-gradient(135deg, rgba(10, 26, 60, 0.92) 0%, rgba(5, 14, 36, 0.96) 100%);
   border: 1px solid rgba(77, 122, 199, 0.32);
   border-radius: 24px;
   box-shadow:
@@ -242,9 +264,11 @@ body {
 
 .glass-input {
   background: linear-gradient(135deg, rgba(2, 8, 22, 0.85), rgba(4, 12, 30, 0.78));
-  border: 1px solid rgba(77, 122, 199, 0.20);
+  border: 1px solid rgba(77, 122, 199, 0.2);
   border-radius: 14px;
-  transition: border-color 200ms ease, box-shadow 200ms ease;
+  transition:
+    border-color 200ms ease,
+    box-shadow 200ms ease;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 .glass-input:hover {
@@ -292,7 +316,9 @@ body {
     0 1px 0 rgba(255, 255, 255, 0.18) inset,
     0 -1px 0 rgba(0, 0, 0, 0.25) inset,
     0 8px 22px -6px rgba(255, 98, 0, 0.55);
-  transition: transform 180ms ease, box-shadow 180ms ease;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
   font-weight: 600;
   letter-spacing: 0.005em;
 }
@@ -317,7 +343,10 @@ body {
   border: 1px solid rgba(77, 122, 199, 0.25);
   border-radius: 12px;
   color: var(--rt-text);
-  transition: border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
 }
 .btn-ghost:hover:not(:disabled) {
   border-color: rgba(255, 98, 0, 0.45);
@@ -333,7 +362,10 @@ body {
   background: linear-gradient(135deg, rgba(8, 22, 52, 0.65), rgba(4, 12, 30, 0.7));
   border: 1px solid rgba(77, 122, 199, 0.3);
   position: relative;
-  transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+  transition:
+    background 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
   flex-shrink: 0;
 }
 .glass-toggle.on {
@@ -381,8 +413,12 @@ body {
 }
 
 @keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* ── Scrollbar ──────────────────────────────────────── */

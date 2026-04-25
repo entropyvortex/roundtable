@@ -48,9 +48,7 @@ export default function BackToTop() {
         {/* Notch camera dot */}
         <div
           className={`w-2 h-2 rounded-full transition-colors ${
-            isComplete
-              ? "bg-arena-accent shadow-[0_0_8px_rgba(255,98,0,0.7)]"
-              : "bg-arena-muted/40"
+            isComplete ? "bg-arena-accent shadow-[0_0_8px_rgba(255,98,0,0.7)]" : "bg-arena-muted/40"
           }`}
         />
 

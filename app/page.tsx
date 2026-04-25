@@ -558,8 +558,7 @@ export default function HomePage() {
             <aside
               className="relative w-[88%] max-w-[360px] h-full overflow-y-auto px-4 py-5 animate-in"
               style={{
-                background:
-                  "linear-gradient(135deg, rgba(6, 16, 38, 0.96), rgba(2, 7, 15, 0.98))",
+                background: "linear-gradient(135deg, rgba(6, 16, 38, 0.96), rgba(2, 7, 15, 0.98))",
                 borderRight: "1px solid rgba(77, 122, 199, 0.22)",
                 boxShadow: "12px 0 40px rgba(0, 0, 0, 0.6)",
                 animationDuration: "260ms",

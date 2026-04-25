@@ -84,7 +84,9 @@ export default function DisagreementPanel() {
                         />
                       )}
                     </div>
-                    <span className="text-[10.5px] text-arena-text/85 flex-1 truncate">{d.label}</span>
+                    <span className="text-[10.5px] text-arena-text/85 flex-1 truncate">
+                      {d.label}
+                    </span>
                     <span className="text-[9.5px] font-mono tabular-nums text-arena-warning font-semibold">
                       Δ{d.severity}
                     </span>

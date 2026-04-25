@@ -231,7 +231,9 @@ export default function ConfigPanel() {
                   <span className="text-arena-muted">Select judge model…</span>
                 )}
               </span>
-              <ChevronDown className={`w-3 h-3 text-arena-muted transition-transform ${judgeOpen ? "rotate-180 text-arena-accent" : ""}`} />
+              <ChevronDown
+                className={`w-3 h-3 text-arena-muted transition-transform ${judgeOpen ? "rotate-180 text-arena-accent" : ""}`}
+              />
             </button>
             {judgeOpen && (
               <div className="absolute z-50 left-0 right-0 top-full mt-1.5 max-h-[260px] overflow-y-auto glass-strong rounded-2xl">

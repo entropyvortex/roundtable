@@ -17,7 +17,11 @@ type ArtProps = {
 export const ConsensusNodesArt = memo(function ConsensusNodesArt({ className }: ArtProps) {
   return (
     <div className={`relative w-full overflow-hidden rounded-t-[22px] ${className ?? ""}`}>
-      <svg viewBox="0 0 600 220" className="w-full h-full block" preserveAspectRatio="xMidYMid slice">
+      <svg
+        viewBox="0 0 600 220"
+        className="w-full h-full block"
+        preserveAspectRatio="xMidYMid slice"
+      >
         <defs>
           <radialGradient id="cn-bg" cx="50%" cy="35%" r="70%">
             <stop offset="0%" stopColor="#0a1f4a" stopOpacity="0.85" />
@@ -212,7 +216,11 @@ export const ConsensusNodesArt = memo(function ConsensusNodesArt({ className }: 
 export const ConsensusRingsArt = memo(function ConsensusRingsArt({ className }: ArtProps) {
   return (
     <div className={`relative w-full overflow-hidden rounded-t-[22px] ${className ?? ""}`}>
-      <svg viewBox="0 0 320 160" className="w-full h-full block" preserveAspectRatio="xMidYMid slice">
+      <svg
+        viewBox="0 0 320 160"
+        className="w-full h-full block"
+        preserveAspectRatio="xMidYMid slice"
+      >
         <defs>
           <radialGradient id="cr-bg" cx="50%" cy="50%" r="70%">
             <stop offset="0%" stopColor="#0c2150" stopOpacity="0.9" />
@@ -228,7 +236,9 @@ export const ConsensusRingsArt = memo(function ConsensusRingsArt({ className }: 
             <stop offset="50%" stopColor="#ffb380" />
             <stop offset="100%" stopColor="#ff6200" stopOpacity="0" />
           </linearGradient>
-          <filter id="cr-glow"><feGaussianBlur stdDeviation="2.5" /></filter>
+          <filter id="cr-glow">
+            <feGaussianBlur stdDeviation="2.5" />
+          </filter>
         </defs>
         <rect width="320" height="160" fill="url(#cr-bg)" />
 
@@ -274,7 +284,12 @@ export const ConsensusRingsArt = memo(function ConsensusRingsArt({ className }: 
           ))}
           {/* Glow core */}
           <circle r="22" fill="url(#cr-core)" filter="url(#cr-glow)">
-            <animate attributeName="opacity" values="0.7;1;0.7" dur="3.2s" repeatCount="indefinite" />
+            <animate
+              attributeName="opacity"
+              values="0.7;1;0.7"
+              dur="3.2s"
+              repeatCount="indefinite"
+            />
           </circle>
           <circle r="6" fill="#fff" />
         </g>
@@ -296,7 +311,12 @@ export const ConsensusRingsArt = memo(function ConsensusRingsArt({ className }: 
                 repeatCount="indefinite"
               />
               <circle cx={o.r} cy="0" r="2.4" fill={o.color}>
-                <animate attributeName="opacity" values="0.5;1;0.5" dur="1.6s" repeatCount="indefinite" />
+                <animate
+                  attributeName="opacity"
+                  values="0.5;1;0.5"
+                  dur="1.6s"
+                  repeatCount="indefinite"
+                />
               </circle>
             </g>
           </g>
@@ -310,7 +330,11 @@ export const ConsensusRingsArt = memo(function ConsensusRingsArt({ className }: 
 export const TrajectoryArt = memo(function TrajectoryArt({ className }: ArtProps) {
   return (
     <div className={`relative w-full overflow-hidden rounded-t-[22px] ${className ?? ""}`}>
-      <svg viewBox="0 0 320 140" className="w-full h-full block" preserveAspectRatio="xMidYMid slice">
+      <svg
+        viewBox="0 0 320 140"
+        className="w-full h-full block"
+        preserveAspectRatio="xMidYMid slice"
+      >
         <defs>
           <linearGradient id="tj-bg" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#0a1f4a" stopOpacity="0.85" />
@@ -324,7 +348,9 @@ export const TrajectoryArt = memo(function TrajectoryArt({ className }: ArtProps
             <stop offset="0%" stopColor="#ff6200" stopOpacity="0.45" />
             <stop offset="100%" stopColor="#ff6200" stopOpacity="0" />
           </linearGradient>
-          <filter id="tj-glow"><feGaussianBlur stdDeviation="2.5" /></filter>
+          <filter id="tj-glow">
+            <feGaussianBlur stdDeviation="2.5" />
+          </filter>
         </defs>
         <rect width="320" height="140" fill="url(#tj-bg)" />
 
@@ -386,7 +412,11 @@ export const TrajectoryArt = memo(function TrajectoryArt({ className }: ArtProps
 export const CostArt = memo(function CostArt({ className }: ArtProps) {
   return (
     <div className={`relative w-full overflow-hidden rounded-t-[22px] ${className ?? ""}`}>
-      <svg viewBox="0 0 320 130" className="w-full h-full block" preserveAspectRatio="xMidYMid slice">
+      <svg
+        viewBox="0 0 320 130"
+        className="w-full h-full block"
+        preserveAspectRatio="xMidYMid slice"
+      >
         <defs>
           <radialGradient id="ct-bg" cx="50%" cy="50%" r="70%">
             <stop offset="0%" stopColor="#0c2150" stopOpacity="0.9" />
@@ -401,12 +431,22 @@ export const CostArt = memo(function CostArt({ className }: ArtProps) {
             <stop offset="0%" stopColor="#ffb380" />
             <stop offset="100%" stopColor="#a83b00" />
           </linearGradient>
-          <filter id="ct-glow"><feGaussianBlur stdDeviation="6" /></filter>
+          <filter id="ct-glow">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
         </defs>
         <rect width="320" height="130" fill="url(#ct-bg)" />
 
         {/* Glow halo */}
-        <ellipse cx="160" cy="100" rx="120" ry="22" fill="url(#ct-coin)" opacity="0.32" filter="url(#ct-glow)" />
+        <ellipse
+          cx="160"
+          cy="100"
+          rx="120"
+          ry="22"
+          fill="url(#ct-coin)"
+          opacity="0.32"
+          filter="url(#ct-glow)"
+        />
 
         {/* Stacked coins */}
         {[
@@ -417,14 +457,16 @@ export const CostArt = memo(function CostArt({ className }: ArtProps) {
         ].map((c, i) => (
           <g key={i}>
             <ellipse cx="160" cy={c.y + 4} rx={c.w / 2} ry="8" fill="rgba(0,0,0,0.45)" />
-            <rect
-              x={160 - c.w / 2}
-              y={c.y - 6}
-              width={c.w}
-              height="10"
-              fill="url(#ct-edge)"
+            <rect x={160 - c.w / 2} y={c.y - 6} width={c.w} height="10" fill="url(#ct-edge)" />
+            <ellipse
+              cx="160"
+              cy={c.y - 6}
+              rx={c.w / 2}
+              ry="6"
+              fill="url(#ct-coin)"
+              stroke="#ffe2c2"
+              strokeWidth="0.6"
             />
-            <ellipse cx="160" cy={c.y - 6} rx={c.w / 2} ry="6" fill="url(#ct-coin)" stroke="#ffe2c2" strokeWidth="0.6" />
             <text
               x="160"
               y={c.y - 4}
@@ -448,8 +490,20 @@ export const CostArt = memo(function CostArt({ className }: ArtProps) {
           [300, 80, 1, "#7ea5e6"],
           [20, 70, 1, "#ffb380"],
         ].map(([x, y, r, c], i) => (
-          <circle key={i} cx={x as number} cy={y as number} r={r as number} fill={c as string} opacity="0.7">
-            <animate attributeName="opacity" values="0.3;1;0.3" dur={`${3 + i * 0.3}s`} repeatCount="indefinite" />
+          <circle
+            key={i}
+            cx={x as number}
+            cy={y as number}
+            r={r as number}
+            fill={c as string}
+            opacity="0.7"
+          >
+            <animate
+              attributeName="opacity"
+              values="0.3;1;0.3"
+              dur={`${3 + i * 0.3}s`}
+              repeatCount="indefinite"
+            />
           </circle>
         ))}
       </svg>
@@ -461,7 +515,11 @@ export const CostArt = memo(function CostArt({ className }: ArtProps) {
 export const DisagreementArt = memo(function DisagreementArt({ className }: ArtProps) {
   return (
     <div className={`relative w-full overflow-hidden rounded-t-[22px] ${className ?? ""}`}>
-      <svg viewBox="0 0 320 130" className="w-full h-full block" preserveAspectRatio="xMidYMid slice">
+      <svg
+        viewBox="0 0 320 130"
+        className="w-full h-full block"
+        preserveAspectRatio="xMidYMid slice"
+      >
         <defs>
           <linearGradient id="dg-bg" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#0c2150" stopOpacity="0.9" />
@@ -475,7 +533,9 @@ export const DisagreementArt = memo(function DisagreementArt({ className }: ArtP
             <stop offset="0%" stopColor="#ffb380" />
             <stop offset="100%" stopColor="#ff6200" />
           </linearGradient>
-          <filter id="dg-glow"><feGaussianBlur stdDeviation="3.5" /></filter>
+          <filter id="dg-glow">
+            <feGaussianBlur stdDeviation="3.5" />
+          </filter>
         </defs>
         <rect width="320" height="130" fill="url(#dg-bg)" />
 
@@ -516,7 +576,12 @@ export const DisagreementArt = memo(function DisagreementArt({ className }: ArtP
         {/* Center spark */}
         <g transform="translate(160 65)">
           <circle r="10" fill="#ff6200" opacity="0.6" filter="url(#dg-glow)">
-            <animate attributeName="opacity" values="0.4;0.9;0.4" dur="1.6s" repeatCount="indefinite" />
+            <animate
+              attributeName="opacity"
+              values="0.4;0.9;0.4"
+              dur="1.6s"
+              repeatCount="indefinite"
+            />
           </circle>
           <path d="M -8 0 L 0 -10 L 8 0 L 0 10 Z" fill="#ffd0a8" />
         </g>
@@ -529,7 +594,11 @@ export const DisagreementArt = memo(function DisagreementArt({ className }: ArtP
 export const FlowArt = memo(function FlowArt({ className }: ArtProps) {
   return (
     <div className={`relative w-full overflow-hidden rounded-t-[22px] ${className ?? ""}`}>
-      <svg viewBox="0 0 320 130" className="w-full h-full block" preserveAspectRatio="xMidYMid slice">
+      <svg
+        viewBox="0 0 320 130"
+        className="w-full h-full block"
+        preserveAspectRatio="xMidYMid slice"
+      >
         <defs>
           <radialGradient id="fl-bg" cx="50%" cy="50%" r="70%">
             <stop offset="0%" stopColor="#0c2150" stopOpacity="0.9" />
@@ -540,14 +609,30 @@ export const FlowArt = memo(function FlowArt({ className }: ArtProps) {
             <stop offset="50%" stopColor="#ff9a4d" />
             <stop offset="100%" stopColor="#4d7ac7" stopOpacity="0" />
           </linearGradient>
-          <filter id="fl-glow"><feGaussianBlur stdDeviation="2.4" /></filter>
+          <filter id="fl-glow">
+            <feGaussianBlur stdDeviation="2.4" />
+          </filter>
         </defs>
         <rect width="320" height="130" fill="url(#fl-bg)" />
 
         {/* Orbiting ring */}
         <g transform="translate(160 65)">
-          <ellipse rx="100" ry="40" fill="none" stroke="rgba(77,122,199,0.35)" strokeWidth="1" strokeDasharray="3 4" />
-          <ellipse rx="80" ry="30" fill="none" stroke="rgba(255,98,0,0.4)" strokeWidth="1" strokeDasharray="4 5" />
+          <ellipse
+            rx="100"
+            ry="40"
+            fill="none"
+            stroke="rgba(77,122,199,0.35)"
+            strokeWidth="1"
+            strokeDasharray="3 4"
+          />
+          <ellipse
+            rx="80"
+            ry="30"
+            fill="none"
+            stroke="rgba(255,98,0,0.4)"
+            strokeWidth="1"
+            strokeDasharray="4 5"
+          />
         </g>
 
         {/* Nodes around table */}
@@ -611,7 +696,11 @@ export const FlowArt = memo(function FlowArt({ className }: ArtProps) {
 export const ConfigArt = memo(function ConfigArt({ className }: ArtProps) {
   return (
     <div className={`relative w-full overflow-hidden rounded-t-[22px] ${className ?? ""}`}>
-      <svg viewBox="0 0 320 110" className="w-full h-full block" preserveAspectRatio="xMidYMid slice">
+      <svg
+        viewBox="0 0 320 110"
+        className="w-full h-full block"
+        preserveAspectRatio="xMidYMid slice"
+      >
         <defs>
           <linearGradient id="cf-bg" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#0a1f4a" stopOpacity="0.85" />
@@ -622,7 +711,9 @@ export const ConfigArt = memo(function ConfigArt({ className }: ArtProps) {
             <stop offset="50%" stopColor="#ff9a4d" />
             <stop offset="100%" stopColor="#4d7ac7" stopOpacity="0" />
           </linearGradient>
-          <filter id="cf-glow"><feGaussianBlur stdDeviation="2.2" /></filter>
+          <filter id="cf-glow">
+            <feGaussianBlur stdDeviation="2.2" />
+          </filter>
         </defs>
         <rect width="320" height="110" fill="url(#cf-bg)" />
 

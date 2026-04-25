@@ -68,8 +68,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               backdropFilter: "blur(16px)",
               color: "#F1F5FF",
               borderRadius: "14px",
-              boxShadow:
-                "0 12px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(0, 48, 135, 0.25)",
+              boxShadow: "0 12px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(0, 48, 135, 0.25)",
             },
           }}
         />

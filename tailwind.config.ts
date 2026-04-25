@@ -47,7 +47,8 @@ const config: Config = {
         "glow-orange": "0 0 24px 0 rgba(255, 98, 0, 0.35), 0 0 48px 0 rgba(255, 98, 0, 0.18)",
         "glow-orange-sm": "0 0 12px 0 rgba(255, 98, 0, 0.4)",
         "glow-blue": "0 0 24px 0 rgba(77, 122, 199, 0.3), 0 0 48px 0 rgba(77, 122, 199, 0.15)",
-        "inner-glow": "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), inset 0 0 0 1px rgba(77, 122, 199, 0.18)",
+        "inner-glow":
+          "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), inset 0 0 0 1px rgba(77, 122, 199, 0.18)",
       },
       animation: {
         "pulse-slow": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
