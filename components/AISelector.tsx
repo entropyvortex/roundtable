@@ -5,11 +5,23 @@
 // ─────────────────────────────────────────────────────────────
 
 import { useArenaStore } from "@/lib/store";
-import { PERSONAS } from "@/lib/personas";
-import type { ModelInfo, Persona } from "@/lib/types";
-import { Plus, X, ChevronRight, Bot, Loader2, Cpu, Server, Sparkles, Star } from "lucide-react";
+import { PERSONAS, composeCustomPersona, DEFAULT_CUSTOM_SPEC } from "@/lib/personas";
+import type { CustomPersonaSpec, ModelInfo, Persona } from "@/lib/types";
+import {
+  Plus,
+  X,
+  ChevronRight,
+  Bot,
+  Loader2,
+  Cpu,
+  Server,
+  Sparkles,
+  Star,
+  Sliders,
+} from "lucide-react";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
+import PersonaBuilder from "./PersonaBuilder";
 
 export default function AISelector() {
   const {
@@ -27,6 +39,8 @@ export default function AISelector() {
   const [selectedPersona, setSelectedPersona] = useState<Persona>(
     PERSONAS.find((p) => p.id === "first-principles") ?? PERSONAS[0],
   );
+  const [selectedCustomSpec, setSelectedCustomSpec] = useState<CustomPersonaSpec | null>(null);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeProvider, setActiveProvider] = useState<string | null>(null);
   const [personaMenuOpen, setPersonaMenuOpen] = useState(false);
@@ -89,8 +103,19 @@ export default function AISelector() {
 
   const handleAdd = () => {
     if (!selectedModel || !selectedPersona) return;
-    addParticipant(selectedModel, selectedPersona);
+    if (selectedPersona.id === "custom" && selectedCustomSpec) {
+      addParticipant(selectedModel, selectedPersona, selectedCustomSpec);
+    } else {
+      addParticipant(selectedModel, selectedPersona);
+    }
   };
+
+  const handleSaveBuilder = useCallback((spec: CustomPersonaSpec) => {
+    const composed = composeCustomPersona(spec);
+    setSelectedPersona(composed);
+    setSelectedCustomSpec(spec);
+    setBuilderOpen(false);
+  }, []);
 
   if (modelsLoading) {
     return (
@@ -278,6 +303,26 @@ export default function AISelector() {
                     Choose Persona
                   </p>
                 </div>
+                <button
+                  onClick={() => {
+                    setBuilderOpen(true);
+                    setPersonaMenuOpen(false);
+                  }}
+                  className="w-full flex items-start gap-2.5 px-3 py-2.5 transition-all hover:bg-arena-accent/10 border-b border-arena-border/30"
+                >
+                  <span className="w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 bg-arena-accent/15 text-arena-accent">
+                    <Sliders className="w-3 h-3" />
+                  </span>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-[11px] font-medium text-arena-accent">
+                      Build a custom persona…
+                    </p>
+                    <p className="text-[9px] text-arena-muted mt-0.5 line-clamp-1">
+                      Tune 6 axes (risk, optimism, evidence bar, …) — server-composed, no free
+                      text.
+                    </p>
+                  </div>
+                </button>
                 {PERSONAS.map((p) => {
                   const isSel = selectedPersona.id === p.id;
                   return (
@@ -320,6 +365,15 @@ export default function AISelector() {
             )}
         </div>
       </div>
+
+      {/* Builder (when open) */}
+      {builderOpen && (
+        <PersonaBuilder
+          initial={selectedCustomSpec ?? DEFAULT_CUSTOM_SPEC}
+          onSave={handleSaveBuilder}
+          onCancel={() => setBuilderOpen(false)}
+        />
+      )}
 
       {/* Add button */}
       <button

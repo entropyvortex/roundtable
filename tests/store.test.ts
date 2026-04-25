@@ -255,12 +255,132 @@ describe("ArenaStore", () => {
     });
   });
 
+  describe("sweep mode", () => {
+    it("startSweep initialises sweep state with engines", () => {
+      useArenaStore.getState().startSweep(["cvp", "blind-jury", "adversarial"]);
+      const s = useArenaStore.getState();
+      expect(s.sweepActive).toBe(true);
+      expect(s.sweepEngines).toEqual(["cvp", "blind-jury", "adversarial"]);
+      expect(s.sweepCurrentIndex).toBe(0);
+      expect(s.sweepResults).toEqual([]);
+    });
+
+    it("setSweepCurrentIndex tracks progress through the sweep", () => {
+      useArenaStore.getState().startSweep(["cvp", "blind-jury"]);
+      useArenaStore.getState().setSweepCurrentIndex(1);
+      expect(useArenaStore.getState().sweepCurrentIndex).toBe(1);
+    });
+
+    it("pushSweepResult accumulates snapshots", () => {
+      useArenaStore.getState().startSweep(["cvp", "blind-jury"]);
+      useArenaStore.getState().setPrompt("p");
+      const snap1 = useArenaStore.getState().getSnapshot();
+      useArenaStore.getState().pushSweepResult(snap1);
+      useArenaStore.getState().pushSweepResult({ ...snap1, finalScore: 90 });
+      const s = useArenaStore.getState();
+      expect(s.sweepResults).toHaveLength(2);
+      expect(s.sweepResults[1].finalScore).toBe(90);
+    });
+
+    it("clearSweep resets sweep state without touching participants/prompt", () => {
+      useArenaStore.getState().setPrompt("kept");
+      useArenaStore.getState().addParticipant(mockModel, persona);
+      useArenaStore.getState().startSweep(["cvp"]);
+      const snap = useArenaStore.getState().getSnapshot();
+      useArenaStore.getState().pushSweepResult(snap);
+      useArenaStore.getState().clearSweep();
+      const s = useArenaStore.getState();
+      expect(s.sweepActive).toBe(false);
+      expect(s.sweepEngines).toEqual([]);
+      expect(s.sweepResults).toEqual([]);
+      expect(s.prompt).toBe("kept");
+      expect(s.participants).toHaveLength(1);
+    });
+
+    it("reset() does NOT clear sweep state — sweep survives between engines", () => {
+      useArenaStore.getState().startSweep(["cvp", "blind-jury"]);
+      useArenaStore.getState().setSweepCurrentIndex(1);
+      useArenaStore.getState().reset();
+      const s = useArenaStore.getState();
+      expect(s.sweepActive).toBe(true);
+      expect(s.sweepCurrentIndex).toBe(1);
+    });
+
+    it("cancelSweep tears down sweep state but preserves completed sweepResults", () => {
+      useArenaStore.getState().startSweep(["cvp", "blind-jury", "adversarial"]);
+      useArenaStore.getState().setPrompt("p");
+      const snap = useArenaStore.getState().getSnapshot();
+      useArenaStore.getState().pushSweepResult(snap);
+      useArenaStore.getState().cancelSweep();
+      const s = useArenaStore.getState();
+      expect(s.sweepActive).toBe(false);
+      expect(s.sweepEngines).toEqual([]);
+      expect(s.isRunning).toBe(false);
+      // Already-completed engines remain visible for the user.
+      expect(s.sweepResults).toHaveLength(1);
+    });
+  });
+
   describe("snapshot load / getSnapshot", () => {
     it("getSnapshot returns current state shape", () => {
       useArenaStore.getState().setPrompt("hello");
       const snap = useArenaStore.getState().getSnapshot();
       expect(snap.v).toBe(1);
       expect(snap.prompt).toBe("hello");
+    });
+
+    it("loadSnapshot reconstructs usageByParticipant from round responses", () => {
+      const u = (cost: number) => ({
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 150,
+        estimatedCostUSD: cost,
+      });
+      const snap: SessionSnapshot = {
+        v: 1,
+        prompt: "x",
+        engine: "cvp",
+        options: { ...DEFAULT_OPTIONS, rounds: 2 },
+        participants: [
+          { id: "p-a", modelInfo: mockModel, persona },
+          { id: "p-b", modelInfo: mockModel2, persona: persona2 },
+        ],
+        rounds: [
+          {
+            number: 1,
+            type: "initial-analysis",
+            label: "R1",
+            consensusScore: 70,
+            responses: [
+              { participantId: "p-a", roundNumber: 1, content: "", confidence: 70, timestamp: 0, usage: u(0.01) },
+              { participantId: "p-b", roundNumber: 1, content: "", confidence: 80, timestamp: 0, usage: u(0.02) },
+            ],
+          },
+          {
+            number: 2,
+            type: "synthesis",
+            label: "R2",
+            consensusScore: 75,
+            responses: [
+              { participantId: "p-a", roundNumber: 2, content: "", confidence: 75, timestamp: 0, usage: u(0.03) },
+              { participantId: "p-b", roundNumber: 2, content: "", confidence: 80, timestamp: 0, usage: u(0.04) },
+            ],
+          },
+        ],
+        finalScore: 75,
+        finalSummary: "done",
+        judge: null,
+        disagreements: [],
+        tokenTotal: { inputTokens: 400, outputTokens: 200, totalTokens: 600, estimatedCostUSD: 0.1 },
+        createdAt: Date.now(),
+      };
+      useArenaStore.getState().loadSnapshot(snap);
+      const s = useArenaStore.getState();
+      // p-a totals: 0.01 + 0.03 = 0.04
+      expect(s.usageByParticipant["p-a"].estimatedCostUSD).toBeCloseTo(0.04, 5);
+      // p-b totals: 0.02 + 0.04 = 0.06
+      expect(s.usageByParticipant["p-b"].estimatedCostUSD).toBeCloseTo(0.06, 5);
+      expect(s.usageByParticipant["p-a"].totalTokens).toBe(300); // 150 + 150
     });
 
     it("loadSnapshot rehydrates and sets sharedView", () => {

@@ -24,6 +24,7 @@ import {
 import CostMeter from "./CostMeter";
 import ConfidenceTrajectory from "./ConfidenceTrajectory";
 import DisagreementPanel from "./DisagreementPanel";
+import ClaimsPanel from "./ClaimsPanel";
 
 function scrollToResponse(responseId: string) {
   const el = document.getElementById(responseId);
@@ -60,6 +61,7 @@ export default function MessageFlowDiagram() {
         <CostMeter />
         <ConfidenceTrajectory />
         <DisagreementPanel />
+        <ClaimsPanel />
         <MessageFlowCard />
       </div>
     </div>

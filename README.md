@@ -8,7 +8,7 @@
 
 **Put multiple AI models in a room. Give them personas. Watch them debate.**
 
-RoundTable runs the **Consensus Validation Protocol (CVP)** and a **Blind Jury** engine across any combination of AI providers — Grok, Claude, GPT, Gemini, Mistral, and more — with configurable personas, a non-voting Judge synthesizer, a live confidence trajectory chart, a disagreement ledger, a cost meter, shareable permalinks, and a premium dark interface designed for long sessions.
+RoundTable runs three pluggable engines — the **Consensus Validation Protocol (CVP)**, a **Blind Jury**, and an **Adversarial Red Team** — across any combination of AI providers (Grok, Claude, GPT, Gemini, Mistral, and more). It ships with configurable personas, an axis-tunable **custom persona builder**, a non-voting Judge synthesizer, **claim-level disagreement extraction** with verbatim quotes per side, a live confidence trajectory chart, a confidence-spread disagreement ledger, a cost meter with **hard-abort cost cap**, an **engine sweep** that runs one prompt through all three engines side-by-side, shareable permalinks, and a premium dark interface designed for long sessions.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Deploy with Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com/new/clone?repository-url=https://github.com/entropyvortex/roundtable)
@@ -145,6 +145,49 @@ Blind Jury is the right engine when you want _independent_ signals rather than a
 
 Switch engines from the sidebar ("Protocol" section). The Blind Jury engine ignores the round count and the CVP-specific toggles.
 
+### Adversarial Red Team Engine (alternative)
+
+The third engine pressure-tests positions before producing a final synthesis. Where CVP rewards consensus and Blind Jury rewards independent signal, Red Team rewards _robustness_ — every claim has to survive a hostile probe before it gets credit.
+
+1. **Round 1 — Initial Positions.** Every participant emits their position in parallel with no cross-visibility, warned in advance that their position will be attacked. They are asked to state load-bearing claims explicitly so they can be challenged.
+
+2. **Rounds 2 to N-1 — Stress Tests.** One participant per round is the **attacker** (round-robin via `pickAttackerIndex(round, participantCount)`). The attacker turn is special: their persona is _suspended_ for the round and replaced with a "neutral red-team attacker" framing that demands they begin with `Attacking claim: <verbatim quote>` and surface the weakest load-bearing claim. The remaining participants are **defenders** and respond to the attack **in parallel** (same anti-anchoring philosophy as Blind Round 1) — they cannot see other defenders' replies.
+
+3. **Round N — Post-Stress Final Synthesis.** Every participant in parallel writes their final position, explicitly acknowledging which attacks landed, which missed, and what conditional caveats they now attach.
+
+The attacker's confidence score reports how confident they are that the attack lands — not their belief in any underlying view. This is **out-of-band** for the consensus formula, so stress-round scores and disagreement detection are computed from defender responses only, keeping the `avg − 0.5·stddev` interpretation consistent with CVP and Blind Jury.
+
+Switch engines from the Protocol panel. Red Team uses the round count slider; minimum sensible run is 3 rounds (init + 1 stress + final).
+
+### Engine Sweep Mode
+
+Click **Sweep** instead of **Run Consensus** and the same prompt is run through CVP, Blind Jury, and Adversarial Red Team in sequence. The live results panel shows the currently-running engine; below it the **Sweep Results** panel renders one card per engine with the final consensus score, the judge's majority excerpt, the top contradictions, the disagreement count, and the per-engine token / USD subtotal. This makes the _protocol space_ legible — you see how the same question converges (or doesn't) under three different consensus shapes.
+
+Sweep is sequential to respect rate limits; Esc or the Cancel Sweep button tears down the active run while preserving any engines that already completed. Because a sweep is roughly 3× the cost of a single run, the **cost cap** in the Protocol panel is the recommended companion control.
+
+### Custom Persona Builder
+
+The persona menu now includes a **Build a custom persona…** entry. Instead of free-text, the builder exposes six axes — Risk tolerance, Optimism, Evidence bar, Formality, Verbosity, Contrarian streak — each with three levels (low / mid / high). The server composes the system prompt from a small library of vetted phrase fragments, one per `(axis, level)`. The user-typed name is sanitised to a Unicode-letter / digit / space / `._-'` allowlist and capped to 32 chars; user-typed prompt text never reaches the LLM.
+
+This preserves the existing security model: every consensus request rebuilds personas server-side from their IDs, and a custom persona's spec is re-sanitised and re-composed on every run. The spec is cached in `localStorage` so the user can iterate across sessions; it is **not** embedded in URL-hash permalinks (the spec is, the composed prompt is, but neither carries arbitrary text).
+
+### Claim-Level Disagreement Extraction
+
+The confidence-spread `Disagreement` ledger only catches pairs whose self-reported confidence diverges by ≥20 points. After every run with **Claim extraction** enabled (default ON), an additional LLM pass reads the final-round responses and emits a strict JSON object of `{contradictions: [{claim, sides: [{stance, participantIds, quote}]}]}`. The parser:
+
+- Drops contradictions with empty claims, fewer than 2 sides, or sides without a quote.
+- Verifies each quote against the actual response content of the named participants. If the (normalised) first 80 characters don't appear in any cited participant's text, the side is dropped — fabricated quotes don't render.
+- Rejects entries where any participant id appears on more than one side.
+- Caps to 8 contradictions per run.
+
+The result renders in the **Claim-Level Contradictions** panel with one card per contradiction, a colored stripe per side, the stance label, the participants involved, and the verbatim quote. Click a side to scroll to that participant's final-round response. If the extractor itself fails (provider error, model unavailable), a distinct red error card explains what happened — the run is unaffected.
+
+The extractor reuses the judge model when judge synthesis is enabled (single user choice, no extra picker); otherwise it falls back to the first participant's model.
+
+### Cost Cap
+
+A numeric "Cost cap" input in the Protocol panel hard-aborts the run if the running estimated cost crosses the threshold. The engine accumulates `runningCostUSD` after every round, judge call, and claim-extraction call; on cross, it throws `CostCapExceededError` which the SSE pipeline surfaces as an `error` event. The cap is server-clamped to ≤ $50.
+
 ### Why This Is Better Than Majority Vote
 
 Majority vote asks N models the same question and picks the most common answer. CVP does something structurally different:
@@ -171,7 +214,7 @@ Majority vote asks N models the same question and picks the most common answer. 
 
 **Confidence scores are self-reported.** Models assign their own confidence. There is no calibration, no ground truth, and no penalty for overconfidence. The consensus score is only as meaningful as the models' ability to self-assess — which is known to be unreliable. The judge synthesizer is deliberately _not_ a calibrator: it summarises what was said, it does not grade it.
 
-**Disagreement heuristic is confidence-based.** The disagreement ledger flags pairs whose confidence diverges by ≥ 20 points. This catches substantive splits reliably but misses cases where two participants hold opposite positions with identical confidence. Treat the ledger as a lower bound on actual disagreement.
+**Disagreement heuristic is confidence-based.** The default disagreement ledger flags pairs whose confidence diverges by ≥ 20 points. This catches loud splits but misses cases where two participants hold opposite positions with identical confidence. The **claim-level extractor** addresses this gap by running an additional LLM pass that emits structured contradictions with verbatim quotes per side; quotes are verified against actual response content so fabricated claims are dropped. The confidence-spread ledger remains as a fast, deterministic, no-extra-LLM-call lower bound.
 
 ### Example Transcript
 
@@ -215,13 +258,15 @@ The following are deliberate non-goals for v1 but would further tighten the prot
 
 1. **Confidence calibration or external validation.** Self-reported confidence is unreliable. A calibration step — comparing stated confidence to accuracy on known-answer questions — or a separate judge model that _grades_ argument quality (as opposed to the current faithfulness-only synthesizer) would add grounding.
 
-2. **Claim-level disagreement extraction.** The current disagreement ledger detects confidence splits, not semantic contradictions. A follow-up pass that extracts the actual claims participants make and flags direct contradictions would be more precise, at the cost of extra LLM calls.
+2. **Additional pluggable engines.** Adversarial Red Team is available; Delphi, Ranked Choice, and Dialectical variants are still on the Roadmap. The engine interface is clean enough that adding a new one is one new function plus a dispatcher branch.
 
-3. **Pluggable engines beyond CVP and Blind Jury.** The engine interface is clean enough to support Delphi, Adversarial Red Team, Dialectical, and Ranked Choice variants. See the Roadmap table below.
+3. **Cross-engine judge synthesis.** Engine sweep currently runs an independent judge per engine. A meta-judge that synthesises across all three engines' final rounds would surface "what every protocol agrees on" but is deferred — per-engine judges produce intentionally engine-specific outputs (e.g. CVP's "Majority Position" is semantically different from Adversarial's post-stress majority).
 
 ## Security
 
-This is experimental, it has no authentication protection, if you publish this with your keys, someone could burn your tokens/exploit to process their prompts out of curiosity or malice.
+This is an experimental research demo with **no authentication**. Anyone who can reach the URL can spend your provider keys. Read [SECURITY.md](SECURITY.md) before deploying.
+
+The codebase has been built with defense-in-depth in mind — server-side persona rebuilds (the client cannot inject a `systemPrompt`), an axis-only custom-persona builder (no user free-text reaches the LLM), per-IP rate limiting, server-side input validation, an optional cost cap that hard-aborts a run when the running estimate crosses a USD threshold, and a strict claim-extractor parser that rejects fabricated quotes. Details and threat model in [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -231,30 +276,33 @@ This is experimental, it has no authentication protection, if you publish this w
 
 ## Features
 
-| Feature                         | Description                                                                                                                                                                                                                                                                                           |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Multi-Provider**              | Connect any OpenAI-compatible API — Grok, Claude, OpenAI, Mistral, Groq, Together, and more                                                                                                                                                                                                           |
-| **7 Built-in Personas**         | Risk Analyst, First-Principles Engineer, VC Specialist, Scientific Skeptic, Optimistic Futurist, Devil's Advocate, Domain Expert                                                                                                                                                                      |
-| **Two Engines**                 | **CVP** (multi-round debate) and **Blind Jury** (parallel independent responses + judge synthesis) — switch from the sidebar                                                                                                                                                                          |
-| **Blind Round 1**               | CVP's first round runs in parallel with zero cross-visibility so the first wave of analysis is not contaminated by speaking order                                                                                                                                                                     |
-| **Randomized Order**            | CVP shuffles participant order in rounds 2+ to kill first-mover anchoring bias                                                                                                                                                                                                                        |
-| **Early Stopping**              | CVP detects convergence between rounds and terminates early, saving latency and tokens                                                                                                                                                                                                                |
-| **Judge Synthesizer**           | Optional non-voting model that produces a structured **Majority / Minority / Unresolved / Confidence** summary over the final-round answers                                                                                                                                                           |
-| **Confidence Trajectory Chart** | Live sparkline with one line per participant, so you can _see_ drift, convergence, and sycophancy as the run unfolds                                                                                                                                                                                  |
-| **Disagreement Ledger**         | Deterministic confidence-spread detector grouping flagged pairs by round — click a row to jump to that round in the transcript                                                                                                                                                                        |
-| **Cost Meter**                  | Live total tokens and estimated USD per run, with a bundled pricing table for major frontier models                                                                                                                                                                                                   |
-| **Floating Run Panel**          | On xl+ screens a pinned right-side container stacks the cost meter, confidence trajectory, disagreement ledger, and a collapsible UML-style message flow diagram, scrolling as a unit so all four stay in view throughout a long transcript. Below xl the same panels fall back into the left sidebar |
-| **Provider Error Handling**     | Errored participant calls render as red error cards with the upstream message + HTTP status, fire a per-participant toast, and are excluded from the consensus score and disagreement ledger so one broken provider can't tank a run                                                                  |
-| **Prompt Library**              | 8 curated preset prompts surfaced under the textarea for first-time visitors to hit Run immediately                                                                                                                                                                                                   |
-| **Session Export & Share**      | One-click download as Markdown or JSON, plus a permalink that encodes the full run into the URL hash (compressed when available)                                                                                                                                                                      |
-| **Shared View Mode**            | Loading a `#rt=…` permalink rehydrates the run into a read-only viewer for review, embedding, or screenshots                                                                                                                                                                                          |
-| **Real-time SSE Streaming**     | Watch responses arrive token-by-token with live progress tracking                                                                                                                                                                                                                                     |
-| **Cascaded Model Selector**     | Provider-first dropdown with persona assignment per participant                                                                                                                                                                                                                                       |
-| **Copy to Clipboard**           | One-click raw markdown export per response                                                                                                                                                                                                                                                            |
-| **Cancel Anytime**              | Stop button + Escape key — abort signal propagates to the server and stops provider calls                                                                                                                                                                                                             |
-| **Premium Dark UI**             | High-contrast, readable interface designed for extended analysis sessions                                                                                                                                                                                                                             |
-| **Rate-Limited API**            | In-memory per-IP rate limiting, server-side input validation, persona/model re-verification                                                                                                                                                                                                           |
-| **No External Services**        | No database, no auth service, no persistence — Vercel-deployable in one click                                                                                                                                                                                                                         |
+| Feature                              | Description                                                                                                                                                                                                                                                                                           |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Multi-Provider**                   | Connect any OpenAI-compatible API — Grok, Claude, OpenAI, Mistral, Groq, Together, and more                                                                                                                                                                                                           |
+| **Three Engines**                    | **CVP** (multi-round debate), **Blind Jury** (parallel independent responses + judge synthesis), and **Adversarial Red Team** (rotating attacker stress-tests positions before a post-stress synthesis) — switch from the Protocol panel                                                              |
+| **Engine Sweep Mode**                | One click runs the same prompt through all three engines sequentially and renders side-by-side cards so you can _see_ how the protocol shape changes the conclusion                                                                                                                                   |
+| **7 Built-in Personas**              | Risk Analyst, First-Principles Engineer, VC Specialist, Scientific Skeptic, Optimistic Futurist, Devil's Advocate, Domain Expert                                                                                                                                                                      |
+| **Custom Persona Builder**           | Build session-scoped personas by tuning six axes (risk tolerance, optimism, evidence bar, formality, verbosity, contrarian streak) — server composes the prompt from vetted phrase fragments, no user free-text reaches the LLM, no jailbreak surface                                                 |
+| **Blind Round 1**                    | CVP's first round runs in parallel with zero cross-visibility so the first wave of analysis is not contaminated by speaking order                                                                                                                                                                     |
+| **Randomized Order**                 | CVP shuffles participant order in rounds 2+ to kill first-mover anchoring bias                                                                                                                                                                                                                        |
+| **Early Stopping**                   | CVP detects convergence between rounds and terminates early, saving latency and tokens                                                                                                                                                                                                                |
+| **Judge Synthesizer**                | Optional non-voting model that produces a structured **Majority / Minority / Unresolved / Confidence** summary over the final-round answers                                                                                                                                                           |
+| **Claim-Level Disagreement Extractor** | LLM pass after the final round emits structured `{claim, sides[{stance, participants, verbatim quote}]}`. Quotes are verified against actual response content (fabricated quotes are dropped); same-participant-on-multiple-sides is rejected. Click a side to jump to that participant's response  |
+| **Confidence Trajectory Chart**      | Live sparkline with one line per participant, so you can _see_ drift, convergence, and sycophancy as the run unfolds                                                                                                                                                                                  |
+| **Disagreement Ledger**              | Deterministic confidence-spread detector grouping flagged pairs by round — click a row to jump to that round in the transcript                                                                                                                                                                        |
+| **Cost Meter + Cost Cap**            | Live total tokens and estimated USD per run, with a bundled pricing table for major frontier models. Optional hard-abort cost cap (USD) tears down the run as soon as the running estimate crosses the threshold                                                                                      |
+| **Floating Run Panel**               | On xl+ screens a pinned right-side container stacks the cost meter, confidence trajectory, disagreement ledger, claim contradictions, and a collapsible UML-style message flow diagram, scrolling as a unit so all of them stay in view throughout a long transcript. Below xl the panels fall back into the left sidebar |
+| **Provider Error Handling**          | Errored participant calls render as red error cards with the upstream message + HTTP status, fire a per-participant toast, and are excluded from the consensus score and disagreement ledger so one broken provider can't tank a run                                                                  |
+| **Prompt Library**                   | 8 curated preset prompts surfaced under the textarea for first-time visitors to hit Run immediately                                                                                                                                                                                                   |
+| **Session Export & Share**           | One-click download as Markdown or JSON (includes the claim digest), plus a permalink that encodes the full run into the URL hash (compressed when available)                                                                                                                                          |
+| **Shared View Mode**                 | Loading a `#rt=…` permalink rehydrates the run into a read-only viewer for review, embedding, or screenshots                                                                                                                                                                                          |
+| **Real-time SSE Streaming**          | Watch responses arrive token-by-token with live progress tracking                                                                                                                                                                                                                                     |
+| **Cascaded Model Selector**          | Provider-first dropdown with persona assignment per participant                                                                                                                                                                                                                                       |
+| **Copy to Clipboard**                | One-click raw markdown export per response                                                                                                                                                                                                                                                            |
+| **Cancel Anytime**                   | Stop button + Escape key — single-engine cancels the current run; sweep mode cancels the entire sweep while preserving any engines that already completed                                                                                                                                             |
+| **Premium Dark UI**                  | High-contrast, readable interface designed for extended analysis sessions                                                                                                                                                                                                                             |
+| **Rate-Limited API**                 | In-memory per-IP rate limiting, server-side input validation, persona/model re-verification                                                                                                                                                                                                           |
+| **No External Services**             | No database, no auth service, no persistence — Vercel-deployable in one click                                                                                                                                                                                                                         |
 
 ---
 
@@ -278,7 +326,7 @@ Edit `.env.local` with your keys, then:
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Add participants from the left sidebar, pick an engine in the **Protocol** panel (CVP or Blind Jury), optionally enable judge synthesis, type a prompt (or click a preset), and hit **Run Consensus**. On xl+ screens the cost meter, confidence trajectory, disagreement ledger, and message-flow diagram live in a floating panel pinned to the right of the viewport — watch them populate in real time as the debate streams. Below xl those same panels fall back into the left sidebar. When the run finishes, click **Export** in the results panel to download the transcript as Markdown/JSON or copy a permalink that rehydrates the run on any browser.
+Open [http://localhost:3000](http://localhost:3000). Add participants from the left sidebar (pick a built-in persona or build a custom one with the axis sliders), choose an engine in the **Protocol** panel (CVP, Blind Jury, or Adversarial Red Team), optionally enable judge synthesis and claim-level extraction, set a **cost cap** if you want hard-abort protection, type a prompt (or click a preset), and hit **Run Consensus** — or hit **Sweep** to run the same prompt through all three engines back-to-back. On xl+ screens the cost meter, confidence trajectory, disagreement ledger, claim contradictions, and message-flow diagram live in a floating panel pinned to the right of the viewport — watch them populate in real time as the debate streams. Below xl those same panels fall back into the left sidebar. When the run finishes, click **Export** in the results panel to download the transcript as Markdown/JSON or copy a permalink that rehydrates the run on any browser.
 
 ---
 
@@ -379,28 +427,31 @@ app/
   layout.tsx                 Root layout with Sonner toasts
 components/
   AISelector.tsx             Cascaded provider/model picker + persona selector
-  ConfigPanel.tsx            Engine selector, CVP toggles, judge model picker
+  ConfigPanel.tsx            Engine selector, CVP toggles, judge model picker, claim toggle, cost cap
   ResultPanel.tsx            Live streaming results, error cards, markdown rendering
-  MessageFlowDiagram.tsx     Floating right-side panel: cost + trajectory + ledger + UML flow
+  SweepResultsPanel.tsx      Side-by-side comparison cards for engine sweep results
+  MessageFlowDiagram.tsx     Floating right-side panel: cost + trajectory + ledger + claims + UML flow
   ConfidenceTrajectory.tsx   SVG sparkline of per-participant confidence across rounds
   DisagreementPanel.tsx      Grouped disagreement ledger with click-to-scroll
+  ClaimsPanel.tsx            Claim-level contradictions card stack with verbatim quotes
   CostMeter.tsx              Live token/USD totals
   JudgeCard.tsx              Non-voting judge synthesis output
+  PersonaBuilder.tsx         Axis-slider builder for custom personas (no free-text → no jailbreak surface)
   PromptLibrary.tsx          Preset prompt chips under the textarea
   SessionMenu.tsx            Export (Markdown/JSON) + copy permalink dropdown
   BackToTop.tsx              Scroll navigation
 lib/
-  consensus-engine.ts        CVP + Blind Jury orchestration, judge synthesizer, disagreement detection
+  consensus-engine.ts        CVP + Blind Jury + Adversarial Red Team orchestration, judge, claim extractor, cost cap
   providers.ts               Server-side provider resolution (parses AI_PROVIDERS)
-  personas.ts                7 participant personas + JUDGE_PERSONA
+  personas.ts                7 participant personas + JUDGE_PERSONA + axis-based custom-persona composer
   pricing.ts                 Model pricing table + cost estimator
   prompt-library.ts          Preset prompts for the library UI
-  session.ts                 Snapshot ↔ Markdown / JSON / URL-hash serializer
-  store.ts                   Zustand global state, options bundle, snapshot load/save
+  session.ts                 Snapshot ↔ Markdown / JSON / URL-hash serializer (incl. claim digests)
+  store.ts                   Zustand global state, options bundle, sweep state, snapshot load/save
   types.ts                   All TypeScript types
 ```
 
-The consensus engine runs entirely server-side. Each round streams responses via Server-Sent Events. The client processes events through a single `processEvent` function that calls Zustand actions directly via `getState()` — no subscriptions, no re-renders from token events. The same event pipeline drives the confidence trajectory, the disagreement ledger, the cost meter, and the judge card — every panel reads from one coherent store.
+The consensus engine runs entirely server-side. Each round streams responses via Server-Sent Events. The client processes events through a single `processEvent` function that calls Zustand actions directly via `getState()` — no subscriptions, no re-renders from token events. The same event pipeline drives the confidence trajectory, the disagreement ledger, the cost meter, the judge card, and the claims panel — every panel reads from one coherent store.
 
 ---
 
@@ -448,14 +499,14 @@ The new persona will appear in every selector automatically.
 
 ## Roadmap
 
-RoundTable ships with two engines today. The architecture is designed to support more:
+RoundTable ships with three engines today. The architecture is designed to support more:
 
 | Engine                                  | Status    | Description                                                                                    |
 | --------------------------------------- | --------- | ---------------------------------------------------------------------------------------------- |
 | **CVP (Consensus Validation Protocol)** | Available | Multi-round structured debate with blind Round 1, randomized order, early stop, optional judge |
 | **Blind Jury**                          | Available | Parallel independent responses with no cross-visibility, followed by a judge synthesis         |
+| **Adversarial Red Team**                | Available | Rotating attacker stress-tests positions across stress rounds, post-stress synthesis last      |
 | **Delphi Method**                       | Planned   | Anonymous multi-round forecasting with statistical aggregation between rounds                  |
-| **Adversarial Red Team**                | Planned   | One model attacks, others defend — iterative stress-testing of ideas                           |
 | **Ranked Choice Synthesis**             | Planned   | Each model proposes solutions, then ranks all proposals — converges via elimination            |
 | **Dialectical Engine**                  | Planned   | Thesis / Antithesis / Synthesis structure with formal argument mapping                         |
 

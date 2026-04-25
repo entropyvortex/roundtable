@@ -8,17 +8,24 @@ vi.mock("@/lib/consensus-engine", () => ({
   }),
 }));
 
-// Mock personas (used by the route to rebuild server-side)
-vi.mock("@/lib/personas", () => ({
-  getPersona: () => ({
-    id: "test",
-    name: "Test",
-    emoji: "T",
-    color: "#000",
-    systemPrompt: "test",
-    description: "test",
-  }),
-}));
+// Mock personas (used by the route to rebuild server-side).
+// Use the real composeCustomPersona / sanitizeCustomPersonaSpec so we
+// can assert end-to-end that bad specs are rejected with HTTP 400.
+vi.mock("@/lib/personas", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/personas")>("@/lib/personas");
+  return {
+    ...actual,
+    getPersona: () => ({
+      id: "test",
+      name: "Test",
+      emoji: "T",
+      color: "#000",
+      systemPrompt: "test",
+      description: "test",
+    }),
+  };
+});
 
 // Mock providers (used by the route to validate models)
 vi.mock("@/lib/providers", () => ({
@@ -156,6 +163,92 @@ describe("POST /api/consensus", () => {
       }),
     );
     expect(response.status).toBe(200);
+  });
+
+  it("accepts the adversarial engine", async () => {
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [
+          { id: "p-1", modelInfo: { id: "t:m" }, persona: { id: "test" } },
+          { id: "p-2", modelInfo: { id: "t:m" }, persona: { id: "test" } },
+        ],
+        options: {
+          engine: "adversarial",
+          rounds: 3,
+          randomizeOrder: false,
+          blindFirstRound: false,
+          earlyStop: false,
+          judgeEnabled: false,
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("accepts a participant with a valid custom persona spec", async () => {
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [
+          {
+            id: "p-1",
+            modelInfo: { id: "t:m" },
+            persona: { id: "custom" },
+            customPersonaSpec: {
+              id: "custom",
+              name: "Test Custom",
+              emoji: "🦊",
+              color: "#abcdef",
+              axes: {
+                riskTolerance: "low",
+                optimism: "high",
+                evidenceBar: "high",
+                formality: "mid",
+                verbosity: "low",
+                contrarian: "high",
+              },
+            },
+          },
+        ],
+        options: {
+          engine: "cvp",
+          rounds: 1,
+          randomizeOrder: false,
+          blindFirstRound: false,
+          earlyStop: false,
+          judgeEnabled: false,
+        },
+      }),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects a participant with an invalid custom persona spec", async () => {
+    const response = await POST(
+      makeRequest({
+        prompt: "test",
+        participants: [
+          {
+            id: "p-1",
+            modelInfo: { id: "t:m" },
+            persona: { id: "custom" },
+            // missing customPersonaSpec entirely
+          },
+        ],
+        options: {
+          engine: "cvp",
+          rounds: 1,
+          randomizeOrder: false,
+          blindFirstRound: false,
+          earlyStop: false,
+          judgeEnabled: false,
+        },
+      }),
+    );
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain("custom persona spec");
   });
 
   it("rejects judgeEnabled with no judge model", async () => {
