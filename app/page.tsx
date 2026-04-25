@@ -12,11 +12,13 @@ import MessageFlowDiagram from "@/components/MessageFlowDiagram";
 import BackToTop from "@/components/BackToTop";
 import ConfidenceTrajectory from "@/components/ConfidenceTrajectory";
 import DisagreementPanel from "@/components/DisagreementPanel";
+import ClaimsPanel from "@/components/ClaimsPanel";
 import CostMeter from "@/components/CostMeter";
 import ConfigPanel from "@/components/ConfigPanel";
 import PromptLibrary from "@/components/PromptLibrary";
 import { ConsensusNodesArt, ConfigArt } from "@/components/HeroArt";
 import { toast } from "sonner";
+import SweepResultsPanel from "@/components/SweepResultsPanel";
 import {
   Play,
   RotateCcw,
@@ -33,7 +35,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import type { ConsensusEvent, ConsensusRequest } from "@/lib/types";
+import type { ConsensusEvent, ConsensusRequest, EngineType } from "@/lib/types";
 import { decodeSnapshotFromHash } from "@/lib/session";
 
 export default function HomePage() {
@@ -45,6 +47,7 @@ export default function HomePage() {
   const progress = useArenaStore((s) => s.progress);
   const finalScore = useArenaStore((s) => s.finalScore);
   const sharedView = useArenaStore((s) => s.sharedView);
+  const sweepActive = useArenaStore((s) => s.sweepActive);
 
   const setAvailableModels = useArenaStore((s) => s.setAvailableModels);
   const setModelsLoading = useArenaStore((s) => s.setModelsLoading);
@@ -114,8 +117,13 @@ export default function HomePage() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && useArenaStore.getState().isRunning) {
-        useArenaStore.getState().cancelConsensus();
+      if (e.key !== "Escape") return;
+      const s = useArenaStore.getState();
+      if (s.sweepActive) {
+        s.cancelSweep();
+        toast.info("Sweep cancelled");
+      } else if (s.isRunning) {
+        s.cancelConsensus();
         toast.info("Consensus cancelled");
       }
     };
@@ -123,33 +131,17 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const handleRunConsensus = useCallback(async () => {
+  const runOneEngine = useCallback(async (engineOverride?: EngineType) => {
     const state = useArenaStore.getState();
-    if (!state.prompt.trim()) {
-      toast.error("Enter a prompt first");
-      return;
-    }
-    if (state.participants.length < 2) {
-      toast.error("Add at least 2 AI participants");
-      return;
-    }
-    if (state.options.judgeEnabled && !state.options.judgeModelId) {
-      toast.error("Choose a judge model or disable judge synthesis");
-      return;
-    }
-
-    if (typeof window !== "undefined" && window.location.hash) {
-      history.replaceState(null, "", window.location.pathname);
-    }
-
     const controller = state.startConsensus();
-    setDrawerOpen(false);
-    toast.info("Consensus started — Esc to cancel");
+
+    const optionsForRun =
+      engineOverride !== undefined ? { ...state.options, engine: engineOverride } : state.options;
 
     const body: ConsensusRequest = {
       prompt: state.prompt.trim(),
       participants: state.participants,
-      options: state.options,
+      options: optionsForRun,
     };
 
     try {
@@ -180,19 +172,106 @@ export default function HomePage() {
           }
         }
       }
+      return true;
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
+      if (err instanceof DOMException && err.name === "AbortError") return false;
       const msg = err instanceof Error ? err.message : "Unknown error";
       toast.error(`Consensus failed: ${msg}`);
       useArenaStore.getState().completeConsensus(0, `Error: ${msg}`, 0);
+      return false;
     }
   }, []);
+
+  const handleRunConsensus = useCallback(async () => {
+    const state = useArenaStore.getState();
+    if (!state.prompt.trim()) {
+      toast.error("Enter a prompt first");
+      return;
+    }
+    if (state.participants.length < 2) {
+      toast.error("Add at least 2 AI participants");
+      return;
+    }
+    if (state.options.judgeEnabled && !state.options.judgeModelId) {
+      toast.error("Choose a judge model or disable judge synthesis");
+      return;
+    }
+
+    // Clear any URL hash from a previously loaded shared view
+    if (typeof window !== "undefined" && window.location.hash) {
+      history.replaceState(null, "", window.location.pathname);
+    }
+    // Clear any previous sweep state when a single-engine run starts
+    useArenaStore.getState().clearSweep();
+
+    setDrawerOpen(false);
+    toast.info("Consensus started — Esc to cancel");
+    await runOneEngine();
+  }, [runOneEngine]);
+
+  const handleRunSweep = useCallback(async () => {
+    const state = useArenaStore.getState();
+    if (!state.prompt.trim()) {
+      toast.error("Enter a prompt first");
+      return;
+    }
+    if (state.participants.length < 2) {
+      toast.error("Add at least 2 AI participants");
+      return;
+    }
+    if (state.options.judgeEnabled && !state.options.judgeModelId) {
+      toast.error("Choose a judge model or disable judge synthesis");
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.location.hash) {
+      history.replaceState(null, "", window.location.pathname);
+    }
+
+    const sweepEngines: EngineType[] = ["cvp", "blind-jury", "adversarial"];
+    const store = useArenaStore.getState();
+    store.startSweep(sweepEngines);
+    setDrawerOpen(false);
+    toast.info(
+      `Sweep started — running ${sweepEngines.length} engines sequentially. Esc cancels current.`,
+    );
+
+    for (let i = 0; i < sweepEngines.length; i++) {
+      // If the user cancelled the sweep (sweepActive flipped off), stop.
+      if (!useArenaStore.getState().sweepActive) break;
+      useArenaStore.getState().setSweepCurrentIndex(i);
+      const engine = sweepEngines[i];
+      const ok = await runOneEngine(engine);
+      if (!ok) {
+        // Aborted or errored. Don't push a partial snapshot — better to
+        // show whichever engines DID complete than a half-rendered card.
+        toast.error(`Sweep stopped on ${engine}.`);
+        break;
+      }
+      // Snapshot the just-completed engine BEFORE resetting state for
+      // the next one.
+      const snap = useArenaStore.getState().getSnapshot();
+      useArenaStore.getState().pushSweepResult(snap);
+      if (i < sweepEngines.length - 1 && useArenaStore.getState().sweepActive) {
+        useArenaStore.getState().reset();
+      }
+    }
+    if (useArenaStore.getState().sweepActive) {
+      toast.success("Sweep complete — compare engines below.");
+    }
+  }, [runOneEngine]);
 
   const canRun = !isRunning && !sharedView && prompt.trim().length > 0 && participants.length >= 2;
 
   const handleCancel = useCallback(() => {
-    cancelConsensus();
-    toast.info("Consensus cancelled");
+    const s = useArenaStore.getState();
+    if (s.sweepActive) {
+      s.cancelSweep();
+      toast.info("Sweep cancelled");
+    } else {
+      cancelConsensus();
+      toast.info("Consensus cancelled");
+    }
   }, [cancelConsensus]);
 
   const handleLeaveSharedView = useCallback(() => {
@@ -271,6 +350,7 @@ export default function HomePage() {
         <CostMeter />
         <ConfidenceTrajectory />
         <DisagreementPanel />
+        <ClaimsPanel />
       </div>
 
       {isRunning && (
@@ -548,7 +628,9 @@ export default function HomePage() {
                     <span className="text-arena-text font-medium">
                       {options.engine === "blind-jury"
                         ? "Blind Jury"
-                        : `${options.rounds} round${options.rounds !== 1 ? "s" : ""}`}
+                        : options.engine === "adversarial"
+                          ? `Red Team · ${options.rounds} round${options.rounds !== 1 ? "s" : ""}`
+                          : `${options.rounds} round${options.rounds !== 1 ? "s" : ""}`}
                     </span>
                   </span>
                 </div>
@@ -558,23 +640,35 @@ export default function HomePage() {
                     className="flex items-center gap-2 bg-arena-danger/15 border border-arena-danger/40 text-arena-danger rounded-xl px-4 sm:px-5 py-2.5 text-[12.5px] sm:text-[13px] font-semibold hover:bg-arena-danger/25 active:scale-[0.98] transition-colors"
                   >
                     <Square className="w-3.5 h-3.5 fill-current" />
-                    Cancel
+                    {sweepActive ? "Cancel Sweep" : "Cancel"}
                   </button>
                 ) : (
-                  <button
-                    onClick={handleRunConsensus}
-                    disabled={!canRun}
-                    className="btn-orange flex items-center gap-2 px-5 sm:px-6 py-2.5 text-[13px] sm:text-[13.5px] shine"
-                  >
-                    <Play className="w-4 h-4 fill-current" />
-                    Run Consensus
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleRunSweep}
+                      disabled={!canRun}
+                      title="Run the same prompt through CVP, Blind Jury, and Adversarial Red Team in sequence"
+                      className="btn-ghost flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-[12px] sm:text-[12.5px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      Sweep
+                    </button>
+                    <button
+                      onClick={handleRunConsensus}
+                      disabled={!canRun}
+                      className="btn-orange flex items-center gap-2 px-5 sm:px-6 py-2.5 text-[13px] sm:text-[13.5px] shine"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      Run Consensus
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
           </div>
 
           <ResultPanel />
+          <SweepResultsPanel />
         </main>
       </div>
 
@@ -682,6 +776,15 @@ function processEvent(event: ConsensusEvent) {
     case "judge-end":
       flushTokens();
       s.completeJudge(event.result);
+      break;
+    case "claims-start":
+      s.startClaims(event.modelId, event.providerName);
+      break;
+    case "claims-end":
+      s.completeClaims(event.digest);
+      if (event.digest.error) {
+        toast.error(`Claim extraction failed: ${event.digest.error}`);
+      }
       break;
     case "consensus-complete":
       flushTokens();

@@ -13,7 +13,12 @@ const HASH_KEY = "rt";
 
 export function snapshotToMarkdown(snapshot: SessionSnapshot): string {
   const date = new Date(snapshot.createdAt).toISOString();
-  const engineName = snapshot.engine === "blind-jury" ? "Blind Jury" : "CVP";
+  const engineName =
+    snapshot.engine === "blind-jury"
+      ? "Blind Jury"
+      : snapshot.engine === "adversarial"
+        ? "Adversarial Red Team"
+        : "CVP";
 
   const lines: string[] = [];
   lines.push("# RoundTable Session");
@@ -64,6 +69,23 @@ export function snapshotToMarkdown(snapshot: SessionSnapshot): string {
     lines.push(`## Judge Synthesis — ${snapshot.judge.providerName} / ${snapshot.judge.modelId}`);
     lines.push(snapshot.judge.content);
     lines.push("");
+  }
+
+  if (snapshot.claims && snapshot.claims.contradictions.length > 0) {
+    lines.push(
+      `## Claim-Level Contradictions — ${snapshot.claims.providerName} / ${snapshot.claims.modelId}`,
+    );
+    for (const c of snapshot.claims.contradictions) {
+      lines.push(`### ${c.claim}`);
+      for (const side of c.sides) {
+        const names = side.participantIds
+          .map((pid) => snapshot.participants.find((p) => p.id === pid)?.persona.name ?? pid)
+          .join(", ");
+        lines.push(`- **${side.stance}** (${names})`);
+        lines.push(`  > ${side.quote}`);
+      }
+      lines.push("");
+    }
   }
 
   return lines.join("\n");

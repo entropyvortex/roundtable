@@ -9,7 +9,7 @@
 
 import type { ConsensusEvent, ConsensusOptions, EngineType, Participant } from "@/lib/types";
 import { runConsensus } from "@/lib/consensus-engine";
-import { getPersona } from "@/lib/personas";
+import { composeCustomPersona, getPersona, sanitizeCustomPersonaSpec } from "@/lib/personas";
 import { findResolvedModel } from "@/lib/providers";
 
 export const dynamic = "force-dynamic";
@@ -37,15 +37,24 @@ function isRateLimited(ip: string): boolean {
   return false;
 }
 
-// Periodic cleanup to prevent memory leak
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, log] of requestLog.entries()) {
-    const recent = log.filter((t) => now - t < RATE_WINDOW_MS);
-    if (recent.length === 0) requestLog.delete(ip);
-    else requestLog.set(ip, recent);
-  }
-}, RATE_WINDOW_MS);
+// Periodic cleanup to prevent memory leak.
+// On Vercel serverless this module is fresh per cold start, so the
+// setInterval is harmless. In dev with Next.js HMR the same module can
+// be re-evaluated many times; without this guard we'd register a new
+// interval per HMR pass and they'd never get cleared. Keying on a
+// global symbol prevents accumulation across reloads.
+const CLEANUP_KEY = Symbol.for("roundtable.consensus-route.cleanup");
+const globalAny = globalThis as unknown as Record<symbol, NodeJS.Timeout | undefined>;
+if (!globalAny[CLEANUP_KEY]) {
+  globalAny[CLEANUP_KEY] = setInterval(() => {
+    const now = Date.now();
+    for (const [ip, log] of requestLog.entries()) {
+      const recent = log.filter((t) => now - t < RATE_WINDOW_MS);
+      if (recent.length === 0) requestLog.delete(ip);
+      else requestLog.set(ip, recent);
+    }
+  }, RATE_WINDOW_MS);
+}
 
 // ── Options parsing & validation ───────────────────────────
 
@@ -57,7 +66,9 @@ interface LooseRequestBody {
 }
 
 function parseEngine(v: unknown): EngineType {
-  return v === "blind-jury" ? "blind-jury" : "cvp";
+  if (v === "blind-jury") return "blind-jury";
+  if (v === "adversarial") return "adversarial";
+  return "cvp";
 }
 
 function parseBool(v: unknown, fallback: boolean): boolean {
@@ -76,6 +87,14 @@ function parseOptions(body: LooseRequestBody): ConsensusOptions {
       ? (raw.judgeModelId as string)
       : undefined;
 
+  // Cost cap is in USD. Clamp to a sensible range so a malformed body
+  // can't disable the protection or set absurd values.
+  const rawCap = raw.costCapUSD;
+  const costCapUSD =
+    typeof rawCap === "number" && Number.isFinite(rawCap) && rawCap > 0
+      ? Math.min(rawCap, 50)
+      : undefined;
+
   return {
     engine: parseEngine(raw.engine),
     rounds,
@@ -84,6 +103,8 @@ function parseOptions(body: LooseRequestBody): ConsensusOptions {
     earlyStop: parseBool(raw.earlyStop, true),
     judgeEnabled: parseBool(raw.judgeEnabled, false),
     judgeModelId,
+    extractClaimsEnabled: parseBool(raw.extractClaimsEnabled, false),
+    costCapUSD,
   };
 }
 
@@ -150,6 +171,7 @@ export async function POST(request: Request) {
     id?: unknown;
     modelInfo?: { id?: unknown };
     persona?: { id?: unknown };
+    customPersonaSpec?: unknown;
   }>) {
     const modelCompositeId = typeof p.modelInfo?.id === "string" ? p.modelInfo.id : "";
     const resolved = findResolvedModel(modelCompositeId);
@@ -160,9 +182,24 @@ export async function POST(request: Request) {
       });
     }
 
-    // Rebuild persona from server-side definitions (ignore client systemPrompt)
+    // Rebuild persona from server-side definitions (ignore client systemPrompt).
+    // For custom personas, sanitize and compose from the axis spec instead.
     const personaId = typeof p.persona?.id === "string" ? p.persona.id : "";
-    const persona = getPersona(personaId);
+    let persona;
+    let customSpec;
+    if (personaId === "custom") {
+      const sanitized = sanitizeCustomPersonaSpec(p.customPersonaSpec);
+      if (!sanitized) {
+        return new Response(JSON.stringify({ error: "Invalid custom persona spec" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      persona = composeCustomPersona(sanitized);
+      customSpec = sanitized;
+    } else {
+      persona = getPersona(personaId);
+    }
 
     validatedParticipants.push({
       id: typeof p.id === "string" ? p.id : `p-${validatedParticipants.length + 1}`,
@@ -173,6 +210,7 @@ export async function POST(request: Request) {
         modelId: resolved.modelId,
       },
       persona,
+      ...(customSpec ? { customPersonaSpec: customSpec } : {}),
     });
   }
 

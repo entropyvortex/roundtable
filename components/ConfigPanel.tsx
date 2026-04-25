@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { useArenaStore } from "@/lib/store";
-import { ChevronDown, Dices, Eye, ZapOff, Gavel, Sliders } from "lucide-react";
+import { ChevronDown, Dices, Eye, ZapOff, Gavel, Sliders, GitMerge, Coins } from "lucide-react";
 import { useMemo, useState, useRef, useEffect } from "react";
 
 function Toggle({
@@ -81,6 +81,19 @@ export default function ConfigPanel() {
   );
 
   const isCvp = options.engine === "cvp";
+  const isAdversarial = options.engine === "adversarial";
+
+  const engineDescriptions: Record<typeof options.engine, string> = {
+    cvp: "Multi-round structured debate with cross-visibility.",
+    "blind-jury": "One-shot parallel responses + judge synthesis.",
+    adversarial: "Rotating attacker stress-tests positions before final synthesis.",
+  };
+
+  const engineLabels: Record<typeof options.engine, string> = {
+    cvp: "CVP",
+    "blind-jury": "Blind Jury",
+    adversarial: "Red Team",
+  };
 
   return (
     <div className="space-y-4">
@@ -88,15 +101,15 @@ export default function ConfigPanel() {
         <p className="section-label">
           <Sliders className="w-2.5 h-2.5" /> AI Engine
         </p>
-        <div className="grid grid-cols-2 gap-2">
-          {(["cvp", "blind-jury"] as const).map((eng) => {
+        <div className="grid grid-cols-3 gap-1.5">
+          {(["cvp", "blind-jury", "adversarial"] as const).map((eng) => {
             const active = options.engine === eng;
             return (
               <button
                 key={eng}
                 onClick={() => setOption("engine", eng)}
                 disabled={isRunning}
-                className={`relative px-3 py-2.5 rounded-xl text-[12px] font-semibold border transition-colors disabled:opacity-40 overflow-hidden ${
+                className={`relative px-2 py-2 rounded-xl text-[11px] font-semibold border transition-colors disabled:opacity-40 overflow-hidden ${
                   active
                     ? "bg-gradient-to-br from-[#ff6200]/22 to-[#ff8a3a]/12 text-arena-glow border-arena-accent/55 shadow-[0_0_16px_-6px_rgba(255,98,0,0.5)]"
                     : "bg-black/40 text-arena-text border-white/[0.07] hover:border-arena-blue/40"
@@ -105,16 +118,20 @@ export default function ConfigPanel() {
                 {active && (
                   <span className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-arena-accent to-transparent" />
                 )}
-                {eng === "cvp" ? "CVP" : "Blind Jury"}
+                {engineLabels[eng]}
               </button>
             );
           })}
         </div>
         <p className="text-[10px] text-arena-muted leading-relaxed">
-          {isCvp
-            ? "Multi-round structured debate with cross-visibility between participants."
-            : "One-shot parallel responses synthesised by an independent judge."}
+          {engineDescriptions[options.engine]}
         </p>
+        {isAdversarial && (
+          <p className="text-[9px] text-arena-warning/80 mt-1 leading-relaxed">
+            One participant per stress round becomes the attacker (round-robin). Final round is a
+            post-stress synthesis from every participant.
+          </p>
+        )}
       </div>
 
       {isCvp && (
@@ -146,7 +163,42 @@ export default function ConfigPanel() {
         </div>
       )}
 
+      <div className="pt-3 border-t border-white/[0.06]">
+        <p className="section-label mb-2">
+          <Coins className="w-2.5 h-2.5" /> Cost cap
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-arena-muted">$</span>
+          <input
+            type="number"
+            min={0}
+            max={50}
+            step={0.05}
+            value={options.costCapUSD ?? ""}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const v = raw === "" ? undefined : Math.min(50, Math.max(0, parseFloat(raw) || 0));
+              setOption("costCapUSD", v);
+            }}
+            placeholder="off"
+            disabled={isRunning}
+            className="glass-input flex-1 px-2.5 py-1.5 text-[11px] text-arena-text placeholder:text-arena-muted/40 disabled:opacity-40 font-mono tabular-nums"
+          />
+        </div>
+        <p className="text-[10px] text-arena-muted leading-relaxed mt-1.5">
+          Hard-abort the run if estimated cost crosses this cap. Leave blank to disable.
+        </p>
+      </div>
+
       <div className="space-y-2">
+        <Toggle
+          label="Claim extraction"
+          description="LLM pass extracts structured semantic contradictions from final responses."
+          icon={<GitMerge className="w-3 h-3" />}
+          checked={!!options.extractClaimsEnabled}
+          onChange={(v) => setOption("extractClaimsEnabled", v)}
+          disabled={isRunning}
+        />
         <Toggle
           label="Judge synthesis"
           description="A non-voting model produces a majority/minority summary."
