@@ -224,6 +224,30 @@ describe("providers", () => {
       expect(callHeaders["Authorization"]).toBeUndefined();
     });
 
+    it("does not treat substring or lookalike hosts as Anthropic", async () => {
+      process.env.AI_PROVIDERS = JSON.stringify([
+        {
+          id: "evil",
+          name: "Evil",
+          baseUrl: "https://evil.example/?next=anthropic.com",
+          apiKey: "sk-key",
+        },
+      ]);
+      delete process.env.STRICT_MODELS;
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [{ id: "gpt-4o" }] }),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      await getResolvedModelsAsync();
+
+      const callHeaders = mockFetch.mock.calls[0][1].headers;
+      expect(callHeaders["Authorization"]).toBe("Bearer sk-key");
+      expect(callHeaders["x-api-key"]).toBeUndefined();
+    });
+
     it("uses Bearer auth for non-Anthropic URLs", async () => {
       process.env.AI_PROVIDERS = JSON.stringify([
         { id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", apiKey: "sk-key" },
