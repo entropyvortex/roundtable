@@ -82,9 +82,14 @@ interface ApiModel {
   display_name?: string;
 }
 
-/** Detect if this is an Anthropic-style API based on the URL */
+/** Detect if this is an Anthropic-style API based on the URL hostname. */
 function isAnthropicApi(baseUrl: string): boolean {
-  return baseUrl.includes("anthropic.com");
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === "anthropic.com" || host.endsWith(".anthropic.com");
+  } catch {
+    return false;
+  }
 }
 
 /**
