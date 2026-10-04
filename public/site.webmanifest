@@ -1,7 +1,7 @@
 {
   "name": "RoundTable",
   "short_name": "RoundTable",
-  "description": "Multi-AI Consensus Playground",
+  "description": "Ask a panel of AI models one question and get an answer-first brief",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
@@ -16,7 +16,7 @@
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#0f172a",
-  "background_color": "#0f172a",
+  "theme_color": "#111214",
+  "background_color": "#111214",
   "display": "standalone"
 }

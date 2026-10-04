@@ -1,47 +1,103 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────
-// Judge Card — Non-voting synthesizer output
+// Judge Card — non-voting synthesizer verdict
 // ─────────────────────────────────────────────────────────────
+// Completed: Majority / Minority / Unresolved from the parsed judge
+// result (falls back to the full text when parsing found nothing).
+// Running: streams `judgeStream` live as plain text; markdown is parsed
+// once the verdict is complete, not on every frame.
 
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { useArenaStore } from "@/lib/store";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Gavel, Loader2 } from "lucide-react";
+import { stripJudgeConfidence } from "@/lib/format";
+import { cn } from "@/components/ui";
+import Markdown from "./Markdown";
+import { BriefSection } from "./run/BriefSection";
 
-const remarkPlugins = [remarkGfm];
+const SECTIONS = [
+  { key: "majorityPosition", title: "Majority", stripe: "border-success" },
+  { key: "minorityPositions", title: "Minority", stripe: "border-info" },
+  { key: "unresolvedDisputes", title: "Unresolved", stripe: "border-warning" },
+] as const;
 
 export default function JudgeCard() {
   const judge = useArenaStore((s) => s.judge);
   const stream = useArenaStore((s) => s.judgeStream);
   const running = useArenaStore((s) => s.judgeRunning);
+  const [showFull, setShowFull] = useState(false);
 
   if (!judge && !running) return null;
 
-  const content = running ? stream : (judge?.content ?? "");
-  const displayContent = content.replace(/\nJUDGE_CONFIDENCE:\s*\d+\s*$/i, "").trim();
+  const meta = judge
+    ? `${judge.providerName} · ${judge.modelId} · non-voting`
+    : "Non-voting summariser";
+  const structured = !running && !!judge && SECTIONS.some((s) => judge[s.key].trim().length > 0);
+  const fullText = stripJudgeConfidence(running ? stream : (judge?.content ?? ""));
 
   return (
-    <div className="glass overflow-hidden border border-arena-warning/35 shadow-[0_0_28px_-8px_rgba(251,191,36,0.4)]">
-      <div className="flex items-center gap-3 px-5 py-3.5 border-b border-arena-warning/20 bg-arena-warning/5">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#fbbf24] to-[#b8860b] flex items-center justify-center shadow-[0_0_14px_rgba(251,191,36,0.55)]">
-          <Gavel className="w-4 h-4 text-[#1f1300]" />
-        </div>
-        <div className="flex-1">
-          <p className="text-[12px] font-semibold text-arena-warning tracking-tight">
-            Consensus Judge
-          </p>
-          {judge && (
-            <p className="text-[10px] text-arena-muted mt-0.5">
-              {judge.providerName} · {judge.modelId}
-            </p>
+    <BriefSection
+      title="Judge synthesis"
+      meta={meta}
+      aside={
+        running ? (
+          <span className="inline-flex items-center gap-1.5 text-[13px] text-fg-muted">
+            <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+            Writing…
+          </span>
+        ) : undefined
+      }
+    >
+      {structured && judge ? (
+        <>
+          <div className="space-y-4">
+            {SECTIONS.map(({ key, title, stripe }) => {
+              const text = stripJudgeConfidence(judge[key]);
+              return (
+                <div key={key} className={cn("border-l-2 pl-3", stripe)}>
+                  <h3 className="text-[13px] font-semibold text-fg-muted">{title}</h3>
+                  {text ? (
+                    <div className="prose-rt mt-1">
+                      <Markdown>{text}</Markdown>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-sm text-fg-muted">None noted.</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {fullText && (
+            <div>
+              <button
+                type="button"
+                aria-expanded={showFull}
+                onClick={() => setShowFull((v) => !v)}
+                className="text-[13px] font-medium text-accent hover:underline"
+              >
+                {showFull ? "Hide full synthesis" : "Show full synthesis"}
+              </button>
+              {showFull && (
+                <div className="prose-rt mt-2 border-t border-border pt-3">
+                  <Markdown>{fullText}</Markdown>
+                </div>
+              )}
+            </div>
           )}
+        </>
+      ) : running ? (
+        <div
+          aria-busy="true"
+          className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-fg"
+        >
+          {fullText || "…"}
         </div>
-        {running && <Loader2 className="w-3.5 h-3.5 text-arena-warning animate-spin" />}
-      </div>
-      <div className="px-4 sm:px-6 py-4 sm:py-5 prose prose-invert prose-sm max-w-none text-arena-text/90 leading-[1.78] [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_h2]:text-[13px] [&_h2]:font-semibold [&_h2]:text-arena-warning [&_h2]:mt-3 [&_h2]:mb-1 [&_strong]:text-arena-text [&_pre]:!overflow-x-auto">
-        <ReactMarkdown remarkPlugins={remarkPlugins}>{displayContent || "…"}</ReactMarkdown>
-      </div>
-    </div>
+      ) : (
+        <div className="prose-rt">
+          <Markdown>{fullText || "…"}</Markdown>
+        </div>
+      )}
+    </BriefSection>
   );
 }

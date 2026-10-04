@@ -117,6 +117,8 @@ export interface ConsensusRound {
   label: string;
   responses: RoundResponse[];
   consensusScore: number; // 0-100
+  /** Set when the round's score arrived; absent for a round cut short by a stop or failure. */
+  completed?: boolean;
 }
 
 export type RoundType =
@@ -270,6 +272,25 @@ export interface SessionSnapshot {
   createdAt: number;
 }
 
+/** Top-level views of the single-page app (driven by `ArenaState.view`). */
+export type AppView = "setup" | "run" | "history";
+
+/** Options for `ArenaState.loadSnapshot`. */
+export interface LoadSnapshotOptions {
+  /**
+   * Open the snapshot read-only (`sharedView: true`, the permalink
+   * behaviour) or as an editable run the user can re-run
+   * (`sharedView: false`, e.g. reopening from History). Defaults to `true`.
+   */
+  sharedView?: boolean;
+  /**
+   * Keep the store's current `options` (the user's Setup configuration)
+   * instead of replacing them with `snapshot.options`. Used when opening
+   * one engine's result from the Compare engines table. Defaults to `false`.
+   */
+  keepOptions?: boolean;
+}
+
 /** Global app state managed by Zustand */
 export interface ArenaState {
   // Available models (fetched from server)
@@ -291,7 +312,7 @@ export interface ArenaState {
   progress: number; // 0-1
   roundsCompleted: number;
 
-  // New — Judge, disagreements, cost meter
+  // Judge, disagreements, early stop
   disagreements: Disagreement[];
   judge: JudgeResult | null;
   judgeStream: string;
@@ -310,11 +331,30 @@ export interface ArenaState {
   sweepCurrentIndex: number;
   sweepResults: SessionSnapshot[];
 
+  /**
+   * The options of the run in the store: what `startConsensus` sent (engine
+   * and rounds as the engine runs them) or the loaded snapshot's. Differs
+   * from `options` after a sweep leg, after Setup changes while a run
+   * streams, or after a snapshot was opened with `keepOptions`. Null until
+   * a run starts or loads, and after `reset`.
+   */
+  runOptions: ConsensusOptions | null;
+  /** Why the last run failed (`failConsensus`); null while running, after a normal finish or a stop. */
+  runError: string | null;
+
   // Shared-session replay flag
   sharedView: boolean;
 
   // Cancellation
   abortController: AbortController | null;
+
+  // Which top-level view is showing. Only `setView` changes it — lifecycle
+  // actions (start / reset / loadSnapshot) deliberately leave it alone.
+  view: AppView;
+  /** `Date.now()` when the current run started (`startConsensus`); null when idle/reset/loaded. */
+  runStartedAt: number | null;
+  /** `Date.now()` when the current run completed or was cancelled; null while running. */
+  runEndedAt: number | null;
 
   // Actions — configuration
   setAvailableModels: (models: ModelInfo[]) => void;
@@ -328,7 +368,8 @@ export interface ArenaState {
   setOption: <K extends keyof ConsensusOptions>(key: K, value: ConsensusOptions[K]) => void;
 
   // Actions — lifecycle
-  startConsensus: () => AbortController;
+  /** Start a run of `engine` (default: `options.engine`); records `runOptions`. */
+  startConsensus: (engine?: EngineType) => AbortController;
   cancelConsensus: () => void;
   appendToken: (participantId: string, round: number, token: string) => void;
   completeParticipantRound: (
@@ -349,16 +390,27 @@ export interface ArenaState {
   completeJudge: (result: JudgeResult) => void;
   startClaims: (modelId: string, providerName: string) => void;
   completeClaims: (digest: ClaimDigest) => void;
-  startSweep: (engines: EngineType[]) => void;
+  startSweep: (engines: readonly EngineType[]) => void;
   setSweepCurrentIndex: (i: number) => void;
   pushSweepResult: (snapshot: SessionSnapshot) => void;
   clearSweep: () => void;
   /** Abort the current run AND tear down sweep state in one click. */
   cancelSweep: () => void;
+  /**
+   * Mark the sweep as no longer active (hides "Engine sweep" / "Sweep
+   * complete") while keeping `sweepEngines` and `sweepResults`, so the
+   * Compare engines table stays visible.
+   */
+  dismissSweep: () => void;
   completeConsensus: (finalScore: number, summary: string, roundsCompleted: number) => void;
+  /** End the run with an error: no final score, `runError` set, spinners cleared. */
+  failConsensus: (message: string) => void;
   reset: () => void;
 
+  // Views
+  setView: (view: AppView) => void;
+
   // Snapshot / replay
-  loadSnapshot: (snapshot: SessionSnapshot) => void;
+  loadSnapshot: (snapshot: SessionSnapshot, opts?: LoadSnapshotOptions) => void;
   getSnapshot: () => SessionSnapshot;
 }

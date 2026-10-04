@@ -1,74 +1,105 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────
-// Cost Meter — Live token usage & estimated cost
+// Cost Meter — live token usage & estimated cost, with breakdown
 // ─────────────────────────────────────────────────────────────
 
 import { useArenaStore } from "@/lib/store";
-import { CostArt } from "./HeroArt";
-import { DollarSign, ArrowUpRight, ArrowDownLeft } from "lucide-react";
+import type { TokenUsage } from "@/lib/types";
+import { formatCost, formatTokens } from "@/lib/format";
+import { PersonaDot } from "@/components/ui";
+import { BriefSection } from "./run/BriefSection";
 
-function formatCost(usd: number): string {
-  if (usd === 0) return "$0.00";
-  if (usd < 0.01) return `$${usd.toFixed(4)}`;
-  return `$${usd.toFixed(2)}`;
-}
-
-function formatTokens(n: number): string {
-  if (n < 1000) return n.toString();
-  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}K`;
-  return `${(n / 1_000_000).toFixed(2)}M`;
+interface Row {
+  id: string;
+  label: string;
+  color?: string;
+  usage: TokenUsage;
 }
 
 export default function CostMeter() {
   const total = useArenaStore((s) => s.tokenTotal);
   const isRunning = useArenaStore((s) => s.isRunning);
+  const usageByParticipant = useArenaStore((s) => s.usageByParticipant);
+  const participants = useArenaStore((s) => s.participants);
+  const judgeUsage = useArenaStore((s) => s.judge?.usage);
+  const claimsUsage = useArenaStore((s) => s.claims?.usage);
 
   if (total.totalTokens === 0 && !isRunning) return null;
 
+  const rows: Row[] = participants
+    .filter((p) => usageByParticipant[p.id])
+    .map((p) => ({
+      id: p.id,
+      label: p.persona.name,
+      color: p.persona.color,
+      usage: usageByParticipant[p.id],
+    }));
+  if (judgeUsage) rows.push({ id: "judge", label: "Judge", usage: judgeUsage });
+  if (claimsUsage) rows.push({ id: "claims", label: "Claim extraction", usage: claimsUsage });
+
   return (
-    <div className="glass overflow-hidden">
-      <CostArt className="h-[110px]" />
-      <div className="p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="section-label">
-            <DollarSign className="w-2.5 h-2.5" /> Cost · Estimated
-          </p>
-          {isRunning && (
-            <span className="flex items-center gap-1 text-[9px] text-arena-glow font-medium">
-              <span className="relative flex w-1.5 h-1.5">
-                <span className="animate-ping absolute inline-flex w-full h-full rounded-full bg-arena-accent opacity-75" />
-                <span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-arena-accent" />
-              </span>
-              Live
-            </span>
-          )}
-        </div>
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[28px] font-bold text-arena-text font-mono tabular-nums tracking-tight bg-gradient-to-br from-[#ffd0a8] to-[#ff6200] bg-clip-text text-transparent">
-            {formatCost(total.estimatedCostUSD)}
+    <BriefSection
+      title="Cost (estimated)"
+      aside={
+        isRunning ? (
+          <span className="inline-flex items-center gap-1.5 text-[13px] text-accent">
+            <span aria-hidden className="h-2 w-2 rounded-full bg-accent" />
+            Live
           </span>
-          <span className="text-[11px] text-arena-muted font-mono tabular-nums">
-            {formatTokens(total.totalTokens)} tok
-          </span>
-        </div>
-        <div className="flex items-center gap-3 pt-1.5 border-t border-white/[0.05]">
-          <div className="flex items-center gap-1.5 text-[10px]">
-            <ArrowDownLeft className="w-2.5 h-2.5 text-arena-blue" />
-            <span className="text-arena-muted">in</span>
-            <span className="font-mono tabular-nums text-arena-text/85">
-              {formatTokens(total.inputTokens)}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px]">
-            <ArrowUpRight className="w-2.5 h-2.5 text-arena-glow" />
-            <span className="text-arena-muted">out</span>
-            <span className="font-mono tabular-nums text-arena-text/85">
-              {formatTokens(total.outputTokens)}
-            </span>
-          </div>
-        </div>
+        ) : undefined
+      }
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-2xl font-semibold tabular-nums text-fg">
+          {formatCost(total.estimatedCostUSD)}
+        </span>
+        <span className="text-[13px] tabular-nums text-fg-muted">
+          {formatTokens(total.totalTokens)} tok
+        </span>
       </div>
-    </div>
+      <p className="text-[13px] tabular-nums text-fg-muted">
+        {formatTokens(total.inputTokens)} in · {formatTokens(total.outputTokens)} out
+      </p>
+      {rows.length > 0 && (
+        <table className="w-full text-[13px]">
+          <caption className="sr-only">Usage by seat, judge and claim extraction</caption>
+          <thead>
+            <tr className="border-b border-border text-left text-fg-muted">
+              <th scope="col" className="py-1.5 font-medium">
+                Seat
+              </th>
+              <th scope="col" className="py-1.5 text-right font-medium">
+                Tokens
+              </th>
+              <th scope="col" className="py-1.5 text-right font-medium">
+                Est.
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-border last:border-0">
+                <th scope="row" className="py-1.5 text-left font-normal text-fg">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {r.color && <PersonaDot color={r.color} className="h-2 w-2" />}
+                    <span className="truncate">{r.label}</span>
+                  </span>
+                </th>
+                <td className="py-1.5 text-right tabular-nums text-fg-muted">
+                  {formatTokens(r.usage.totalTokens)}
+                </td>
+                <td className="py-1.5 text-right tabular-nums text-fg">
+                  {formatCost(r.usage.estimatedCostUSD)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="text-[13px] text-fg-muted">
+        From the built-in price table; your provider’s bill may differ.
+      </p>
+    </BriefSection>
   );
 }

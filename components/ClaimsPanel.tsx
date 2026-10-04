@@ -1,163 +1,126 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────
-// Claims Panel — Claim-level contradictions
+// Claims Panel — "Where they split": claim-level contradictions
 // ─────────────────────────────────────────────────────────────
-// Renders the structured claim-level contradictions extracted by
-// the LLM pass that runs after the final round. Unlike the
-// confidence-spread disagreement ledger, each claim here is a
-// semantic split with verbatim quotes per side.
+// Each card is one semantic contradiction extracted after the final
+// round: the claim, then each side as `[dot] Persona — stance` with the
+// verbatim quote. Persona names are buttons that jump to that
+// participant's response in the transcript.
 //
-// Returns null when claims aren't enabled / no contradictions
-// were found / extraction is still running.
+// Returns null when there is nothing to show (claims off / not run).
 
+import { AlertCircle } from "lucide-react";
 import { useArenaStore } from "@/lib/store";
-import { AlertCircle, GitMerge, Loader2, Quote } from "lucide-react";
+import { Badge, PersonaDot, Skeleton } from "@/components/ui";
+import { BriefSection, MutedNote } from "./run/BriefSection";
 
-function scrollToResponse(participantIds: string[]) {
-  // Best-effort: scroll to the last round's response from the first
-  // listed participant. The UI uses `id="r{round}-{participantId}"`.
-  if (participantIds.length === 0) return;
-  // Find any matching response card on the page.
-  const matches = participantIds
-    .flatMap((pid) =>
-      Array.from(document.querySelectorAll<HTMLElement>(`[data-response-id$="-${pid}"]`)),
-    )
-    .sort((a, b) => {
-      const ar = parseInt(a.getAttribute("data-response-id")?.match(/^r(\d+)/)?.[1] ?? "0", 10);
-      const br = parseInt(b.getAttribute("data-response-id")?.match(/^r(\d+)/)?.[1] ?? "0", 10);
-      return br - ar; // last round first
-    });
-  const target = matches[0];
-  if (!target) return;
-  target.scrollIntoView({ behavior: "smooth", block: "center" });
-  target.classList.add("ring-1", "ring-arena-accent/50", "ring-offset-1", "ring-offset-arena-bg");
-  setTimeout(
-    () =>
-      target.classList.remove(
-        "ring-1",
-        "ring-arena-accent/50",
-        "ring-offset-1",
-        "ring-offset-arena-bg",
-      ),
-    1500,
-  );
+export interface ClaimsPanelProps {
+  /**
+   * Jump to a participant's response. Receives the side's participant(s)
+   * and its verbatim quote so the caller can find the exact round.
+   */
+  onJumpToResponse: (participantIds: string[], quote: string) => void;
 }
 
-export default function ClaimsPanel() {
+const TITLE = "Where they split";
+
+export default function ClaimsPanel({ onJumpToResponse }: ClaimsPanelProps) {
   const claims = useArenaStore((s) => s.claims);
   const claimsRunning = useArenaStore((s) => s.claimsRunning);
   const participants = useArenaStore((s) => s.participants);
 
   if (claimsRunning) {
     return (
-      <div className="rounded-xl border border-arena-accent/20 bg-arena-surface/60 p-4 flex items-center gap-2">
-        <Loader2 className="w-3.5 h-3.5 text-arena-accent animate-spin" />
-        <span className="text-[11px] text-arena-muted">Extracting contradictions…</span>
-      </div>
+      <BriefSection title={TITLE} meta="Extracting contradictions…">
+        <div aria-busy="true" className="space-y-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+        </div>
+      </BriefSection>
     );
   }
 
   if (!claims) return null;
 
+  const meta = `Extracted by ${claims.providerName} / ${claims.modelId}`;
+
   if (claims.error) {
     return (
-      <div className="rounded-xl border border-arena-danger/30 bg-arena-danger/5 p-4 space-y-2">
-        <div className="flex items-center gap-2">
-          <AlertCircle className="w-3.5 h-3.5 text-arena-danger" />
-          <h4 className="text-[10px] font-semibold text-arena-danger uppercase tracking-[0.15em]">
-            Claim Extraction Failed
-          </h4>
+      <BriefSection title={TITLE} meta={meta}>
+        <div
+          role="alert"
+          className="space-y-1 rounded-control border border-danger/40 bg-danger/5 p-3"
+        >
+          <p className="flex items-center gap-2 text-sm font-semibold text-danger">
+            <AlertCircle aria-hidden className="h-4 w-4 shrink-0" />
+            Claim extraction failed
+          </p>
+          <p className="break-words font-mono text-[13px] text-fg">{claims.error}</p>
+          <p className="text-[13px] text-fg-muted">
+            The run itself completed; only the contradiction pass failed. Re-run, or pick a
+            different judge model.
+          </p>
         </div>
-        <p className="text-[10px] text-arena-muted leading-relaxed font-mono break-words">
-          {claims.error}
-        </p>
-        <p className="text-[10px] text-arena-muted/70 leading-relaxed">
-          The run completed normally — only the post-final claim pass failed. Try again or pick a
-          different judge model in the Protocol panel.
-        </p>
-      </div>
+      </BriefSection>
     );
   }
 
   if (claims.contradictions.length === 0) {
     return (
-      <div className="rounded-xl border border-arena-border/60 bg-arena-surface/60 p-4 space-y-2">
-        <div className="flex items-center gap-2">
-          <GitMerge className="w-3.5 h-3.5 text-arena-accent" />
-          <h4 className="text-[10px] font-semibold text-arena-muted uppercase tracking-[0.15em]">
-            Claim-Level Contradictions
-          </h4>
-        </div>
-        <p className="text-[10px] text-arena-muted leading-relaxed">
-          The extractor found no substantive contradictions in the final round. Participants either
-          converged or differed only in degree.
-        </p>
-      </div>
+      <BriefSection title={TITLE} meta={meta}>
+        <MutedNote>
+          No substantive contradictions found — participants converged or differed only in degree.
+        </MutedNote>
+      </BriefSection>
     );
   }
 
   const lookup = (id: string) => participants.find((p) => p.id === id);
 
   return (
-    <div className="rounded-xl border border-arena-accent/20 bg-arena-surface/60 p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <GitMerge className="w-3.5 h-3.5 text-arena-accent" />
-        <h4 className="text-[10px] font-semibold text-arena-muted uppercase tracking-[0.15em]">
-          Claim-Level Contradictions
-        </h4>
-        <span className="ml-auto text-[9px] font-mono text-arena-muted/70 tabular-nums">
-          {claims.contradictions.length}
-        </span>
-      </div>
-      <div className="space-y-2.5">
+    <BriefSection title={TITLE} meta={meta} aside={<Badge>{claims.contradictions.length}</Badge>}>
+      <ol className="space-y-3">
         {claims.contradictions.map((c) => (
-          <div
-            key={c.id}
-            className="rounded-lg border border-arena-border/40 bg-arena-bg/40 p-2.5 space-y-2"
-          >
-            <p className="text-[11px] font-medium text-arena-text leading-snug">{c.claim}</p>
-            <div className="space-y-1.5">
-              {c.sides.map((side, idx) => {
-                const dominantPersona = lookup(side.participantIds[0])?.persona;
-                const color = dominantPersona?.color ?? "#94a3b8";
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => scrollToResponse(side.participantIds)}
-                    className="w-full flex items-start gap-2 text-left p-1.5 rounded-md hover:bg-arena-accent/5 transition-colors"
-                  >
-                    <div
-                      className="w-[3px] self-stretch rounded-full shrink-0"
-                      style={{ backgroundColor: color }}
-                    />
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-1">
-                        <span className="text-[10px] font-medium" style={{ color }}>
-                          {side.stance}
+          <li key={c.id} className="rounded-control border border-border p-3">
+            <p className="text-sm font-medium text-fg">{c.claim}</p>
+            <ul className="mt-2 space-y-3">
+              {c.sides.map((side, idx) => (
+                <li key={idx} className="space-y-1.5">
+                  <p className="text-[13px] leading-snug text-fg-muted">
+                    {side.participantIds.map((pid, i) => {
+                      const persona = lookup(pid)?.persona;
+                      return (
+                        <span key={pid}>
+                          {i > 0 && ", "}
+                          <button
+                            type="button"
+                            onClick={() => onJumpToResponse([pid], side.quote)}
+                            title="Show this response in the transcript"
+                            className="inline-flex items-center gap-1.5 rounded-sm font-medium text-fg hover:underline"
+                          >
+                            <PersonaDot color={persona?.color ?? "rgb(var(--fg-muted))"} />
+                            {persona?.name ?? pid}
+                            <span className="sr-only">: show response in transcript</span>
+                          </button>
                         </span>
-                        <span className="text-[9px] text-arena-muted/70">
-                          {side.participantIds
-                            .map((pid) => lookup(pid)?.persona.name ?? pid)
-                            .join(", ")}
-                        </span>
-                      </div>
-                      <div className="flex items-start gap-1 text-[10px] text-arena-muted/80 italic leading-snug">
-                        <Quote className="w-2.5 h-2.5 shrink-0 mt-0.5 opacity-60" />
-                        <span className="line-clamp-3">{side.quote}</span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+                      );
+                    })}
+                    <span aria-hidden> — </span>
+                    <span className="sr-only">, stance: </span>
+                    <span className="text-fg">{side.stance}</span>
+                  </p>
+                  <blockquote className="border-l-2 border-border-strong pl-3 text-sm italic leading-relaxed text-fg-muted">
+                    {side.quote}
+                  </blockquote>
+                </li>
+              ))}
+            </ul>
+          </li>
         ))}
-      </div>
-      <p className="text-[8px] text-arena-muted/60 leading-relaxed">
-        Extracted by {claims.providerName} / {claims.modelId}. Quotes are verbatim from
-        participants&apos; final-round responses.
-      </p>
-    </div>
+      </ol>
+      <p className="text-[13px] text-fg-muted">Quotes are verbatim from participants’ answers.</p>
+    </BriefSection>
   );
 }

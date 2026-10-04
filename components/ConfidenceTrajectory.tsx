@@ -1,169 +1,149 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────
-// Confidence Trajectory — SVG sparkline per participant
+// Confidence Trajectory — per-participant confidence by round
 // ─────────────────────────────────────────────────────────────
+// Lines are an inline SVG stretched to the plot box (non-scaling
+// strokes keep them crisp); points and axis labels are HTML so text
+// stays at a readable 12px at any width. Errored answers are skipped.
 
-import { useArenaStore } from "@/lib/store";
 import { useMemo } from "react";
-import { TrajectoryArt } from "./HeroArt";
-import { TrendingUp } from "lucide-react";
+import { useArenaStore } from "@/lib/store";
+import { PersonaDot } from "@/components/ui";
+import { BriefSection } from "./run/BriefSection";
 
-const WIDTH = 280;
-const HEIGHT = 100;
-const PADDING_X = 22;
-const PADDING_Y = 12;
+const X_PAD = 5; // % of the plot width kept free at each end
+const Y_PAD = 6; // % of the plot height kept free at top/bottom
+const GRID = [100, 50, 0];
 
 export default function ConfidenceTrajectory() {
   const rounds = useArenaStore((s) => s.rounds);
   const participants = useArenaStore((s) => s.participants);
 
-  const series = useMemo(() => {
-    return participants.map((p) => {
-      const points = rounds
-        .map((r) => r.responses.find((x) => x.participantId === p.id))
-        .filter((x) => x !== undefined)
-        .map((x) => x!.confidence);
-      return { participant: p, points };
-    });
-  }, [participants, rounds]);
+  const series = useMemo(
+    () =>
+      participants.map((p) => ({
+        participant: p,
+        points: rounds.flatMap((r, index) => {
+          const res = r.responses.find((x) => x.participantId === p.id && !x.error);
+          return res && Number.isFinite(res.confidence)
+            ? [{ index, round: r.number, value: res.confidence }]
+            : [];
+        }),
+      })),
+    [participants, rounds],
+  );
 
-  const maxRounds = rounds.length;
-  if (maxRounds < 1 || series.every((s) => s.points.length === 0)) {
-    return null;
-  }
+  if (rounds.length < 1 || series.every((s) => s.points.length === 0)) return null;
 
-  const xFor = (i: number) => {
-    if (maxRounds === 1) return WIDTH / 2;
-    return PADDING_X + (i / (maxRounds - 1)) * (WIDTH - PADDING_X * 2);
-  };
-  const yFor = (v: number) => PADDING_Y + (1 - v / 100) * (HEIGHT - PADDING_Y * 2);
+  const n = rounds.length;
+  const x = (i: number) => (n === 1 ? 50 : X_PAD + (i / (n - 1)) * (100 - 2 * X_PAD));
+  const y = (v: number) => Y_PAD + (1 - Math.max(0, Math.min(100, v)) / 100) * (100 - 2 * Y_PAD);
+
+  const summary = series
+    .filter((s) => s.points.length > 0)
+    .map(
+      ({ participant, points }) =>
+        `${participant.persona.name}: ${points.map((p) => `R${p.round} ${p.value}`).join(", ")}`,
+    )
+    .join("; ");
 
   return (
-    <div className="glass overflow-hidden">
-      <TrajectoryArt className="h-[100px]" />
-      <div className="p-5 space-y-3">
-        <p className="section-label">
-          <TrendingUp className="w-2.5 h-2.5" /> Confidence Trajectory
-        </p>
-        <div className="rounded-xl bg-black/35 p-3 border border-white/[0.05]">
+    <BriefSection
+      title="Confidence trajectory"
+      meta="Each participant's self-reported confidence (0–100) per round."
+    >
+      <div className="flex gap-2">
+        <div aria-hidden className="relative w-7 shrink-0 text-xs tabular-nums text-fg-muted">
+          {GRID.map((v) => (
+            <span
+              key={v}
+              className="absolute right-0 -translate-y-1/2 leading-none"
+              style={{ top: `${y(v)}%` }}
+            >
+              {v}
+            </span>
+          ))}
+        </div>
+        <div className="relative h-40 min-w-0 flex-1">
           <svg
-            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-            className="w-full h-auto"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full overflow-visible"
             role="img"
             aria-label="Confidence trajectory chart"
           >
-            <defs>
-              <filter id="ct-line-glow">
-                <feGaussianBlur stdDeviation="1.5" />
-              </filter>
-            </defs>
-            <line
-              x1={PADDING_X}
-              x2={WIDTH - PADDING_X}
-              y1={yFor(50)}
-              y2={yFor(50)}
-              stroke="rgba(77, 122, 199, 0.35)"
-              strokeWidth={0.5}
-              strokeDasharray="2 3"
-            />
-            <text x={2} y={yFor(50) + 3} fill="#8B9CB8" fontSize={8} fontFamily="JetBrains Mono">
-              50
-            </text>
-            <text x={2} y={yFor(100) + 3} fill="#8B9CB8" fontSize={8} fontFamily="JetBrains Mono">
-              100
-            </text>
-            <text x={2} y={yFor(0) + 3} fill="#8B9CB8" fontSize={8} fontFamily="JetBrains Mono">
-              0
-            </text>
-
-            {rounds.map((r, i) => (
-              <text
-                key={`tick-${r.number}`}
-                x={xFor(i)}
-                y={HEIGHT - 1}
-                fill="#8B9CB8"
-                fontSize={7}
-                fontFamily="JetBrains Mono"
-                textAnchor="middle"
-              >
-                R{r.number}
-              </text>
+            <desc>{summary}</desc>
+            {GRID.map((v) => (
+              <line
+                key={v}
+                x1={0}
+                x2={100}
+                y1={y(v)}
+                y2={y(v)}
+                className="stroke-border"
+                strokeWidth={1}
+                strokeDasharray={v === 50 ? "3 4" : undefined}
+                vectorEffect="non-scaling-stroke"
+              />
             ))}
-
-            {series.map(({ participant, points }) => {
-              if (points.length === 0) return null;
-              const path = points
-                .map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(i).toFixed(1)} ${yFor(p).toFixed(1)}`)
-                .join(" ");
-              return (
-                <g key={participant.id}>
-                  <path
-                    d={path}
-                    stroke={participant.persona.color}
-                    strokeWidth={2.4}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity="0.55"
-                    filter="url(#ct-line-glow)"
-                  />
-                  <path
-                    d={path}
-                    stroke={participant.persona.color}
-                    strokeWidth={1.6}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  {points.map((p, i) => (
-                    <g key={i}>
-                      <circle
-                        cx={xFor(i)}
-                        cy={yFor(p)}
-                        r={4}
-                        fill={participant.persona.color}
-                        opacity="0.25"
-                      />
-                      <circle cx={xFor(i)} cy={yFor(p)} r={2.2} fill={participant.persona.color}>
-                        <title>
-                          {participant.persona.name} — Round {i + 1}: {p}%
-                        </title>
-                      </circle>
-                    </g>
-                  ))}
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {series.map(({ participant, points }) => {
-            const last = points[points.length - 1];
-            return (
-              <div
-                key={participant.id}
-                className="flex items-center gap-1.5 text-[9.5px] font-medium px-2 py-1 rounded-lg"
-                style={{
-                  backgroundColor: `${participant.persona.color}18`,
-                  color: participant.persona.color,
-                  border: `1px solid ${participant.persona.color}30`,
-                }}
-              >
-                <div
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{
-                    backgroundColor: participant.persona.color,
-                    boxShadow: `0 0 6px ${participant.persona.color}`,
-                  }}
+            {series.map(({ participant, points }) =>
+              points.length > 1 ? (
+                <polyline
+                  key={participant.id}
+                  points={points.map((p) => `${x(p.index)},${y(p.value)}`).join(" ")}
+                  fill="none"
+                  stroke={participant.persona.color}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
                 />
-                <span className="truncate max-w-[80px]">{participant.persona.name}</span>
-                {last !== undefined && <span className="font-mono tabular-nums">{last}%</span>}
-              </div>
-            );
-          })}
+              ) : null,
+            )}
+          </svg>
+          {series.flatMap(({ participant, points }) =>
+            points.map((p) => (
+              <span
+                key={`${participant.id}-${p.round}`}
+                aria-hidden
+                title={`${participant.persona.name} — Round ${p.round}: ${p.value}`}
+                className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface"
+                style={{
+                  left: `${x(p.index)}%`,
+                  top: `${y(p.value)}%`,
+                  backgroundColor: participant.persona.color,
+                }}
+              />
+            )),
+          )}
         </div>
       </div>
-    </div>
+      <div aria-hidden className="relative ml-9 h-4 text-xs tabular-nums text-fg-muted">
+        {rounds.map((r, i) => (
+          <span
+            key={r.number}
+            className="absolute -translate-x-1/2 leading-none"
+            style={{ left: `${x(i)}%` }}
+          >
+            R{r.number}
+          </span>
+        ))}
+      </div>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-[13px]" aria-label="Latest confidence">
+        {series.map(({ participant, points }) => {
+          const last = points[points.length - 1];
+          return (
+            <li key={participant.id} className="flex min-w-0 items-center gap-1.5">
+              <PersonaDot color={participant.persona.color} />
+              <span className="truncate text-fg">{participant.persona.name}</span>
+              {last !== undefined && (
+                <span className="tabular-nums text-fg-muted">{last.value}%</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </BriefSection>
   );
 }

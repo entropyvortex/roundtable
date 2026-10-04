@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────
 // RoundTable — Prompt Library
 // ─────────────────────────────────────────────────────────────
-// A small curated set of demo prompts. Shown as chips under the
-// textarea when it is empty so first-time visitors have a
-// one-click entry point into the consensus flow.
+// A small curated set of example questions, offered as chips under
+// the question box (grouped by category) so a first-time visitor can
+// run something in one click.
 
 export interface PromptPreset {
   id: string;

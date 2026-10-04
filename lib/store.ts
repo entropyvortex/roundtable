@@ -7,14 +7,15 @@ import type {
   ArenaState,
   ClaimDigest,
   ConsensusOptions,
+  LoadSnapshotOptions,
   Disagreement,
-  EngineType,
   JudgeResult,
   RoundType,
   SessionSnapshot,
   TokenUsage,
 } from "./types";
 import { addUsage, ZERO_USAGE } from "./pricing";
+import { optionsForEngine } from "./engine-rules";
 
 let participantCounter = 0;
 
@@ -31,6 +32,12 @@ export const DEFAULT_OPTIONS: ConsensusOptions = {
   // it off in the Protocol panel for cost-sensitive runs.
   extractClaimsEnabled: true,
 };
+
+/** The options a snapshot ran with; `engine` wins over `options.engine` for older snapshots. */
+function snapshotRunOptions(snapshot: SessionSnapshot): ConsensusOptions {
+  const engine = snapshot.engine ?? snapshot.options?.engine ?? DEFAULT_OPTIONS.engine;
+  return { ...DEFAULT_OPTIONS, ...snapshot.options, engine };
+}
 
 const freshUsageState = () => ({
   tokenTotal: { ...ZERO_USAGE } as TokenUsage,
@@ -68,8 +75,19 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
   sweepCurrentIndex: 0,
   sweepResults: [],
 
+  runOptions: null,
+  runError: null,
+
   sharedView: false,
   abortController: null,
+
+  view: "setup",
+  runStartedAt: null,
+  runEndedAt: null,
+
+  // ── Views ──────────────────────────────────────────────────
+
+  setView: (view) => set({ view }),
 
   // ── Configuration ──────────────────────────────────────────
 
@@ -77,8 +95,14 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
   setModelsLoading: (loading) => set({ modelsLoading: loading }),
 
   addParticipant: (model, persona, customSpec) => {
-    participantCounter++;
-    const id = `p-${participantCounter}`;
+    // Skip ids already on the panel: a snapshot loaded from History or a
+    // permalink brings its own `p-N` ids while the counter restarts per page load.
+    const taken = new Set(get().participants.map((p) => p.id));
+    let id: string;
+    do {
+      participantCounter++;
+      id = `p-${participantCounter}`;
+    } while (taken.has(id));
     set((s) => ({
       participants: [
         ...s.participants,
@@ -92,7 +116,12 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
 
   updateParticipantPersona: (id, persona) =>
     set((s) => ({
-      participants: s.participants.map((p) => (p.id === id ? { ...p, persona } : p)),
+      participants: s.participants.map((p) => {
+        if (p.id !== id) return p;
+        // A built-in persona has no spec; drop the one a custom persona left behind.
+        const { customPersonaSpec: _spec, ...rest } = p;
+        return persona.id === "custom" ? { ...p, persona } : { ...rest, persona };
+      }),
     })),
 
   updateParticipantModel: (id, model) =>
@@ -114,9 +143,14 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
 
   // ── Lifecycle ──────────────────────────────────────────────
 
-  startConsensus: () => {
+  startConsensus: (engine) => {
     const controller = new AbortController();
+    const options = get().options;
     set({
+      // What the request carries. Setup may change while the run streams
+      // and a sweep sends another engine, so the run keeps its own copy.
+      runOptions: optionsForEngine(options, engine ?? options.engine),
+      runError: null,
       isRunning: true,
       currentRound: 0,
       rounds: [],
@@ -135,6 +169,8 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       claimsRunning: false,
       sharedView: false,
       abortController: controller,
+      runStartedAt: Date.now(),
+      runEndedAt: null,
     });
     return controller;
   },
@@ -146,8 +182,12 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
         isRunning: false,
         judgeRunning: false,
         judgeStream: "",
+        // Drop the empty placeholder `startJudge` created; no verdict arrived.
+        judge: s.judgeRunning ? null : s.judge,
         claimsRunning: false,
         abortController: null,
+        // Only stamp the end of a run that was actually in flight.
+        runEndedAt: s.isRunning ? Date.now() : s.runEndedAt,
       };
     }),
 
@@ -213,7 +253,9 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
 
   endRound: (round, consensusScore) =>
     set((s) => ({
-      rounds: s.rounds.map((r) => (r.number === round ? { ...r, consensusScore } : r)),
+      rounds: s.rounds.map((r) =>
+        r.number === round ? { ...r, consensusScore, completed: true } : r,
+      ),
       progress: round / Math.max(1, s.options.rounds),
     })),
 
@@ -263,10 +305,10 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       };
     }),
 
-  startSweep: (engines: EngineType[]) =>
+  startSweep: (engines) =>
     set({
       sweepActive: true,
-      sweepEngines: engines,
+      sweepEngines: [...engines],
       sweepCurrentIndex: 0,
       sweepResults: [],
     }),
@@ -291,24 +333,46 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
         isRunning: false,
         judgeRunning: false,
         judgeStream: "",
+        judge: s.judgeRunning ? null : s.judge,
         claimsRunning: false,
         abortController: null,
+        // Engines and results stay so Compare engines can show what
+        // finished, what was stopped and what never ran.
         sweepActive: false,
-        sweepEngines: [],
-        sweepCurrentIndex: 0,
-        // Keep sweepResults so the user can still see whichever engines completed
+        runEndedAt: s.isRunning ? Date.now() : s.runEndedAt,
       };
     }),
+
+  dismissSweep: () => set({ sweepActive: false }),
 
   completeConsensus: (finalScore, summary, roundsCompleted) =>
     set({
       isRunning: false,
+      runError: null,
       finalScore,
       finalSummary: summary,
       progress: 1,
       roundsCompleted,
       abortController: null,
+      runEndedAt: Date.now(),
     }),
+
+  failConsensus: (message) =>
+    set((s) => ({
+      isRunning: false,
+      runError: message,
+      finalScore: null,
+      finalSummary: null,
+      roundsCompleted: s.rounds.filter((r) => r.completed).length,
+      abortController: null,
+      runEndedAt: Date.now(),
+      // The run can fail mid-judge / mid-claims; leave no spinner on and
+      // no empty verdict behind.
+      judgeRunning: false,
+      judgeStream: "",
+      judge: s.judgeRunning ? null : s.judge,
+      claimsRunning: false,
+    })),
 
   reset: () =>
     set((s) => {
@@ -332,20 +396,22 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
         claimsRunning: false,
         sharedView: false,
         abortController: null,
+        runStartedAt: null,
+        runEndedAt: null,
+        runOptions: null,
+        runError: null,
       };
     }),
 
   // ── Snapshot / share ───────────────────────────────────────
 
-  loadSnapshot: (snapshot: SessionSnapshot) => {
+  loadSnapshot: (snapshot: SessionSnapshot, opts?: LoadSnapshotOptions) => {
     // Abort anything running and replace visible state with the snapshot.
     const s = get();
     s.abortController?.abort();
 
-    // Reconstruct per-participant token totals from the snapshot's
-    // round-level responses. Older code reset this to {}, which made
-    // shared-view users see 0 tokens for every participant in the
-    // floating cost meter.
+    // Per-participant token totals are not stored; rebuild them from the
+    // responses so the cost breakdown is right for a loaded run.
     const usageByParticipant: Record<string, TokenUsage> = {};
     for (const round of snapshot.rounds) {
       for (const r of round.responses) {
@@ -358,7 +424,10 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
     set({
       prompt: snapshot.prompt,
       participants: snapshot.participants,
-      options: snapshot.options,
+      // Opening a Compare engines row keeps the user's Setup configuration.
+      ...(opts?.keepOptions ? {} : { options: snapshot.options }),
+      runOptions: snapshotRunOptions(snapshot),
+      runError: null,
       rounds: snapshot.rounds,
       finalScore: snapshot.finalScore,
       finalSummary: snapshot.finalSummary,
@@ -376,18 +445,25 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       activeStreams: {},
       currentRound: snapshot.rounds.length,
       isRunning: false,
-      sharedView: true,
+      // Default true keeps the permalink behaviour (read-only replay);
+      // History passes `{ sharedView: false }` so the user can re-run.
+      sharedView: opts?.sharedView ?? true,
       abortController: null,
+      // A snapshot carries no wall-clock run duration.
+      runStartedAt: null,
+      runEndedAt: null,
     });
   },
 
   getSnapshot: (): SessionSnapshot => {
     const s = get();
+    // The run's own options, not whatever Setup holds now.
+    const options = s.runOptions ?? optionsForEngine(s.options, s.options.engine);
     return {
       v: 1,
       prompt: s.prompt,
-      engine: s.options.engine,
-      options: s.options,
+      engine: options.engine,
+      options,
       participants: s.participants,
       rounds: s.rounds,
       finalScore: s.finalScore,

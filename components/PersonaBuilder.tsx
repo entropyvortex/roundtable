@@ -1,19 +1,29 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────
-// Persona Builder — axis sliders, no free-text
+// Persona Builder — axis pickers, no free-text prompt
 // ─────────────────────────────────────────────────────────────
 // The user picks a name, emoji, color and 6 axis levels. The
-// resulting CustomPersonaSpec is passed to the parent which
-// uses `composeCustomPersona` to build a Persona for the
-// AISelector. Server side, the spec is re-sanitised and the
-// system prompt is rebuilt from vetted phrase fragments.
-// No user-typed free text reaches the LLM.
+// resulting CustomPersonaSpec (sanitised with the same function
+// the server uses) is passed to the parent, which calls
+// `composeCustomPersona` to build a Persona. Server side, the spec
+// is re-sanitised and the system prompt is rebuilt from vetted
+// phrase fragments: only the sanitised name reaches the model.
+//
+// The last spec the user saved is cached in localStorage under
+// STORAGE_KEY and used as the starting point next time.
 
-import { useState } from "react";
-import { AXIS_KEYS, AXIS_LEVELS, AXIS_META, DEFAULT_CUSTOM_SPEC } from "@/lib/personas";
+import { useId, useState } from "react";
+import { Check, X } from "lucide-react";
+import {
+  AXIS_KEYS,
+  AXIS_LEVELS,
+  AXIS_META,
+  DEFAULT_CUSTOM_SPEC,
+  sanitizeCustomPersonaSpec,
+} from "@/lib/personas";
 import type { AxisLevel, CustomPersonaSpec } from "@/lib/types";
-import { Sliders, Save, X } from "lucide-react";
+import { Button, Field, Input, Segmented, cn } from "@/components/ui";
 
 const COLOR_PRESETS = [
   "#ef4444",
@@ -29,13 +39,15 @@ const COLOR_PRESETS = [
 
 const EMOJI_PRESETS = ["🎛️", "🧭", "🦉", "🦊", "🐙", "🦄", "🌱", "🛡️", "🏛️", "💡", "🧪", "🪞"];
 
-const STORAGE_KEY = "roundtable.customPersonaSpec.v1";
+export const STORAGE_KEY = "roundtable.customPersonaSpec.v1";
 const MAX_NAME_LEN = 32;
 
 export interface PersonaBuilderProps {
   initial?: CustomPersonaSpec;
+  /** Receives the sanitised spec (safe to pass to `composeCustomPersona`). */
   onSave: (spec: CustomPersonaSpec) => void;
   onCancel: () => void;
+  className?: string;
 }
 
 function readStoredSpec(): CustomPersonaSpec | null {
@@ -43,171 +55,203 @@ function readStoredSpec(): CustomPersonaSpec | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as CustomPersonaSpec;
-    if (parsed && parsed.id === "custom") return parsed;
+    // The same validation the server applies; a stale or edited cache yields null.
+    return sanitizeCustomPersonaSpec(JSON.parse(raw));
   } catch {
-    // non-fatal
+    return null;
   }
-  return null;
 }
 
-export default function PersonaBuilder({ initial, onSave, onCancel }: PersonaBuilderProps) {
+export default function PersonaBuilder({
+  initial,
+  onSave,
+  onCancel,
+  className,
+}: PersonaBuilderProps) {
+  const headingId = `persona-builder-${useId()}`;
   const [spec, setSpec] = useState<CustomPersonaSpec>(
     () => initial ?? readStoredSpec() ?? DEFAULT_CUSTOM_SPEC,
   );
+
+  const safe = sanitizeCustomPersonaSpec(spec);
+  const nameError = safe
+    ? undefined
+    : spec.name.trim().length === 0
+      ? "Enter a name."
+      : "Use at least one letter or number in the name.";
 
   const setAxis = (key: (typeof AXIS_KEYS)[number], v: AxisLevel) => {
     setSpec((s) => ({ ...s, axes: { ...s.axes, [key]: v } }));
   };
 
   const handleSave = () => {
+    if (!safe) return;
     if (typeof window !== "undefined") {
       try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(spec));
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
       } catch {
         // localStorage failure is non-fatal — user can still use the spec this session
       }
     }
-    onSave(spec);
+    onSave(safe);
   };
 
-  return (
-    <div className="rounded-xl border border-arena-border/60 bg-arena-surface p-4 space-y-4">
-      <div className="flex items-center gap-2">
-        <Sliders className="w-3.5 h-3.5 text-arena-accent" />
-        <h4 className="text-[10px] font-semibold text-arena-muted uppercase tracking-[0.15em] flex-1">
-          Custom Persona Builder
-        </h4>
-        <button
-          onClick={onCancel}
-          className="p-1 text-arena-muted hover:text-arena-text rounded transition-colors"
-          aria-label="Close persona builder"
-        >
-          <X className="w-3 h-3" />
-        </button>
-      </div>
+  const summary = AXIS_KEYS.map((k) => AXIS_META[k].levels[spec.axes[k]]).join(" · ");
 
-      {/* Identity */}
-      <div className="space-y-2">
-        <label className="block text-[9px] text-arena-muted uppercase tracking-[0.12em]">
-          Display Name
-        </label>
-        <input
-          type="text"
-          value={spec.name}
-          onChange={(e) => setSpec((s) => ({ ...s, name: e.target.value.slice(0, MAX_NAME_LEN) }))}
-          maxLength={MAX_NAME_LEN}
-          placeholder="Custom Participant"
-          className="w-full bg-arena-bg border border-arena-border rounded-lg px-3 py-1.5 text-[12px] text-arena-text placeholder:text-arena-muted/40 focus:outline-none focus:border-arena-accent/60"
+  return (
+    <section
+      aria-labelledby={headingId}
+      className={cn("rounded-card border border-border bg-surface p-4", className)}
+    >
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 id={headingId} className="text-base font-semibold text-fg">
+            Custom persona
+          </h3>
+          <p className="mt-0.5 text-[13px] text-fg-muted">
+            Tune six traits. The server writes the instructions from fixed phrases; only the name
+            reaches the model, stripped to letters, digits and basic punctuation.
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onCancel}
+          aria-label="Close persona builder"
+          className="px-2"
+          icon={<X className="h-4 w-4" />}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label className="block text-[9px] text-arena-muted uppercase tracking-[0.12em]">
-            Emoji
-          </label>
-          <div className="flex flex-wrap gap-1">
-            {EMOJI_PRESETS.map((e) => (
-              <button
-                key={e}
-                onClick={() => setSpec((s) => ({ ...s, emoji: e }))}
-                className={`w-7 h-7 rounded-md flex items-center justify-center text-[14px] transition-all ${
-                  spec.emoji === e
-                    ? "bg-arena-accent/20 ring-1 ring-arena-accent"
-                    : "bg-arena-bg hover:bg-arena-accent/10"
-                }`}
-                aria-label={`Pick emoji ${e}`}
-              >
-                {e}
-              </button>
-            ))}
-          </div>
-        </div>
+      <div className="flex flex-col gap-4">
+        <Field
+          label="Name"
+          aside={`${spec.name.length} / ${MAX_NAME_LEN}`}
+          error={nameError}
+          help="Shown on the panel and in the transcript."
+        >
+          <Input
+            type="text"
+            value={spec.name}
+            onChange={(e) =>
+              setSpec((s) => ({ ...s, name: e.target.value.slice(0, MAX_NAME_LEN) }))
+            }
+            maxLength={MAX_NAME_LEN}
+            placeholder="Custom Participant"
+          />
+        </Field>
 
-        <div className="space-y-1.5">
-          <label className="block text-[9px] text-arena-muted uppercase tracking-[0.12em]">
-            Color
-          </label>
-          <div className="flex flex-wrap gap-1">
-            {COLOR_PRESETS.map((c) => (
-              <button
-                key={c}
-                onClick={() => setSpec((s) => ({ ...s, color: c }))}
-                className={`w-6 h-6 rounded-md transition-all ${
-                  spec.color === c ? "ring-2 ring-offset-1 ring-offset-arena-surface" : ""
-                }`}
-                style={{
-                  backgroundColor: c,
-                  boxShadow: spec.color === c ? `0 0 0 1px ${c}` : undefined,
-                }}
-                aria-label={`Pick color ${c}`}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Axis sliders */}
-      <div className="space-y-2.5 pt-1 border-t border-arena-border/30">
-        {AXIS_KEYS.map((key) => {
-          const meta = AXIS_META[key];
-          const current = spec.axes[key];
-          const idx = AXIS_LEVELS.indexOf(current);
-          return (
-            <div key={key} className="space-y-1.5">
-              <div className="flex items-baseline justify-between">
-                <span className="text-[10px] font-medium text-arena-text">{meta.label}</span>
-                <span className="text-[9px] font-mono text-arena-accent tabular-nums">
-                  {meta.levels[current]}
-                </span>
-              </div>
-              <div className="flex gap-1">
-                {AXIS_LEVELS.map((lvl, i) => (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <fieldset>
+            <legend className="mb-1.5 text-sm font-medium text-fg">Emoji</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {EMOJI_PRESETS.map((e) => {
+                const on = spec.emoji === e;
+                return (
                   <button
-                    key={lvl}
-                    onClick={() => setAxis(key, lvl)}
-                    className={`flex-1 py-1 rounded-md text-[9px] font-medium transition-all border ${
-                      lvl === current
-                        ? "bg-arena-accent/15 text-arena-accent border-arena-accent/40"
-                        : "bg-arena-bg text-arena-muted border-arena-border/60 hover:border-arena-border"
-                    }`}
-                    style={{ opacity: i === idx ? 1 : 0.85 }}
-                    aria-pressed={lvl === current}
+                    key={e}
+                    type="button"
+                    onClick={() => setSpec((s) => ({ ...s, emoji: e }))}
+                    aria-label={`Pick emoji ${e}`}
+                    aria-pressed={on}
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-control border text-base transition-colors",
+                      on
+                        ? "border-accent bg-accent/10"
+                        : "border-border bg-surface hover:bg-surface-2",
+                    )}
                   >
-                    {meta.levels[lvl]}
+                    {e}
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          </fieldset>
 
-      <div className="flex items-center gap-2 pt-2 border-t border-arena-border/30">
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-[14px]"
-          style={{ backgroundColor: `${spec.color}20`, color: spec.color }}
-        >
-          {spec.emoji}
+          <fieldset>
+            <legend className="mb-1.5 text-sm font-medium text-fg">Color</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {COLOR_PRESETS.map((c) => {
+                const on = spec.color === c;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setSpec((s) => ({ ...s, color: c }))}
+                    aria-label={`Pick color ${c}`}
+                    aria-pressed={on}
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center rounded-control border transition-colors",
+                      on ? "border-fg" : "border-border hover:bg-surface-2",
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className="h-4 w-4 rounded-full"
+                      style={{ backgroundColor: c }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-medium text-arena-text truncate">
-            {spec.name || "Custom Participant"}
-          </p>
-          <p className="text-[9px] text-arena-muted truncate">
-            {AXIS_KEYS.map((k) => AXIS_META[k].levels[spec.axes[k]]).join(" · ")}
-          </p>
+
+        <div className="flex flex-col gap-3 border-t border-border pt-4">
+          {AXIS_KEYS.map((key) => {
+            const meta = AXIS_META[key];
+            return (
+              <div
+                key={key}
+                className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+              >
+                <span className="text-sm font-medium text-fg">{meta.label}</span>
+                <Segmented<AxisLevel>
+                  label={meta.label}
+                  size="sm"
+                  fullWidth
+                  className="sm:w-[22rem]"
+                  value={spec.axes[key]}
+                  onChange={(v) => setAxis(key, v)}
+                  options={AXIS_LEVELS.map((lvl) => ({ value: lvl, label: meta.levels[lvl] }))}
+                />
+              </div>
+            );
+          })}
         </div>
-        <button
-          onClick={handleSave}
-          disabled={!spec.name.trim()}
-          className="flex items-center gap-1.5 bg-arena-accent text-white rounded-md px-3 py-1.5 text-[11px] font-medium hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-        >
-          <Save className="w-3 h-3" />
-          Use
-        </button>
+
+        <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <span
+              aria-hidden
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: spec.color }}
+            />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-fg">
+                <span aria-hidden className="mr-1">
+                  {spec.emoji}
+                </span>
+                {spec.name.trim() || "Custom Participant"}
+              </p>
+              <p className="truncate text-[13px] text-fg-muted">{summary}</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="ghost" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleSave}
+              disabled={!safe}
+              icon={<Check className="h-4 w-4" />}
+            >
+              Use persona
+            </Button>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

@@ -306,17 +306,19 @@ describe("ArenaStore", () => {
       expect(s.sweepCurrentIndex).toBe(1);
     });
 
-    it("cancelSweep tears down sweep state but preserves completed sweepResults", () => {
+    it("cancelSweep stops the sweep but keeps its engines and completed results", () => {
       useArenaStore.getState().startSweep(["cvp", "blind-jury", "adversarial"]);
       useArenaStore.getState().setPrompt("p");
       const snap = useArenaStore.getState().getSnapshot();
       useArenaStore.getState().pushSweepResult(snap);
+      useArenaStore.getState().setSweepCurrentIndex(1);
       useArenaStore.getState().cancelSweep();
       const s = useArenaStore.getState();
       expect(s.sweepActive).toBe(false);
-      expect(s.sweepEngines).toEqual([]);
       expect(s.isRunning).toBe(false);
-      // Already-completed engines remain visible for the user.
+      // Compare engines still lists every engine: one done, one stopped, one never run.
+      expect(s.sweepEngines).toEqual(["cvp", "blind-jury", "adversarial"]);
+      expect(s.sweepCurrentIndex).toBe(1);
       expect(s.sweepResults).toHaveLength(1);
     });
   });

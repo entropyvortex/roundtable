@@ -1,680 +1,335 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────
-// RoundTable — Main Page (Glassmorphic Enterprise Dashboard)
+// RoundTable — main page: AppShell + Setup / Run / History
 // ─────────────────────────────────────────────────────────────
+// The views read and write the store; this page owns the side effects:
+// loading providers, streaming /api/consensus (SSE → processEvent),
+// the three-engine sweep, Stop / Esc, `#rt=` permalinks, and saving
+// every completed run to history.
+//
+// Switching views never touches a live run: it keeps streaming into
+// the store and the Run tab picks it up again.
 
-import { useEffect, useCallback, useState } from "react";
-import { useArenaStore } from "@/lib/store";
-import AISelector from "@/components/AISelector";
-import ResultPanel from "@/components/ResultPanel";
-import MessageFlowDiagram from "@/components/MessageFlowDiagram";
-import BackToTop from "@/components/BackToTop";
-import ConfidenceTrajectory from "@/components/ConfidenceTrajectory";
-import DisagreementPanel from "@/components/DisagreementPanel";
-import ClaimsPanel from "@/components/ClaimsPanel";
-import CostMeter from "@/components/CostMeter";
-import ConfigPanel from "@/components/ConfigPanel";
-import PromptLibrary from "@/components/PromptLibrary";
-import { ConsensusNodesArt, ConfigArt } from "@/components/HeroArt";
+import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import SweepResultsPanel from "@/components/SweepResultsPanel";
-import {
-  Play,
-  RotateCcw,
-  Settings2,
-  Minus,
-  Plus,
-  Square,
-  Users,
-  ArrowRight,
-  Sparkles,
-  Eye,
-  Layers,
-  Cpu,
-  Menu,
-  X,
-} from "lucide-react";
-import type { ConsensusEvent, ConsensusRequest, EngineType } from "@/lib/types";
+import AppShell from "@/components/AppShell";
+import SetupView from "@/components/setup/SetupView";
+import RunView from "@/components/run/RunView";
+import HistoryView from "@/components/history/HistoryView";
+import { saveCompletedRun, useHistory, type HistoryEntry } from "@/components/history/useHistory";
+import { optionsForEngine } from "@/lib/engine-rules";
+import { getRunBlocker } from "@/lib/run-blocker";
+import { engineLabel } from "@/lib/score-label";
+import { SWEEP_ENGINES } from "@/lib/sweep";
 import { decodeSnapshotFromHash } from "@/lib/session";
+import { useArenaStore } from "@/lib/store";
+import type {
+  ConsensusEvent,
+  ConsensusRequest,
+  EngineType,
+  ModelInfo,
+  SessionSnapshot,
+} from "@/lib/types";
 
 export default function HomePage() {
-  const participants = useArenaStore((s) => s.participants);
-  const prompt = useArenaStore((s) => s.prompt);
-  const options = useArenaStore((s) => s.options);
-  const isRunning = useArenaStore((s) => s.isRunning);
-  const currentRound = useArenaStore((s) => s.currentRound);
-  const progress = useArenaStore((s) => s.progress);
-  const finalScore = useArenaStore((s) => s.finalScore);
-  const sharedView = useArenaStore((s) => s.sharedView);
-  const sweepActive = useArenaStore((s) => s.sweepActive);
+  const view = useArenaStore((s) => s.view);
+  const { runs } = useHistory();
+  const historyCount = runs.length;
 
-  const setAvailableModels = useArenaStore((s) => s.setAvailableModels);
-  const setModelsLoading = useArenaStore((s) => s.setModelsLoading);
-  const setRoundCount = useArenaStore((s) => s.setRoundCount);
-  const setPrompt = useArenaStore((s) => s.setPrompt);
-  const cancelConsensus = useArenaStore((s) => s.cancelConsensus);
-  const reset = useArenaStore((s) => s.reset);
-  const loadSnapshot = useArenaStore((s) => s.loadSnapshot);
+  // True from the start of a sweep until its loop exits — including the
+  // short gaps between engines when no single run is in flight.
+  const sweepLoop = useRef(false);
 
-  const [showOnboarding, setShowOnboarding] = useState(true);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
-  // Lock body scroll when the mobile drawer is open
+  // ── Providers ──────────────────────────────────────────────
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const prev = document.body.style.overflow;
-    if (drawerOpen) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [drawerOpen]);
-
-  // Close drawer on Escape
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDrawerOpen(false);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [drawerOpen]);
-
-  useEffect(() => {
-    if (!showOnboarding) return;
-    const timer = setTimeout(() => setShowOnboarding(false), 3500);
-    return () => clearTimeout(timer);
-  }, [showOnboarding]);
-
-  useEffect(() => {
-    if (participants.length > 0) setShowOnboarding(false);
-  }, [participants.length]);
-
-  useEffect(() => {
+    const { setAvailableModels, setModelsLoading } = useArenaStore.getState();
     fetch("/api/providers")
-      .then((r) => r.json())
-      .then((data) => {
-        setAvailableModels(data.models || []);
-        setModelsLoading(false);
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<{ models?: ModelInfo[] }>;
       })
+      .then((data) => setAvailableModels(data.models ?? []))
       .catch((err) => {
         console.error("Failed to fetch providers:", err);
-        setModelsLoading(false);
         toast.error("Failed to load AI providers");
-      });
-  }, [setAvailableModels, setModelsLoading]);
+      })
+      .finally(() => setModelsLoading(false));
+  }, []);
 
+  // ── Permalink (#rt=…) → read-only Run view ─────────────────
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!window.location.hash) return;
-    decodeSnapshotFromHash(window.location.hash).then((snap) => {
-      if (!snap) return;
-      loadSnapshot(snap);
-      toast.info("Viewing shared session");
-      setShowOnboarding(false);
-    });
-  }, [loadSnapshot]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+    const hash = window.location.hash;
+    if (!hash) return;
+    let active = true;
+    decodeSnapshotFromHash(hash).then((snap) => {
+      if (!active || !snap) return;
       const s = useArenaStore.getState();
-      if (s.sweepActive) {
-        s.cancelSweep();
-        toast.info("Sweep cancelled");
-      } else if (s.isRunning) {
-        s.cancelConsensus();
-        toast.info("Consensus cancelled");
-      }
+      s.clearSweep();
+      s.loadSnapshot(snap); // sharedView: true
+      s.setView("run");
+      toast.info("Viewing shared session");
+    });
+    return () => {
+      active = false;
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const runOneEngine = useCallback(async (engineOverride?: EngineType) => {
-    const state = useArenaStore.getState();
-    const controller = state.startConsensus();
-
-    const optionsForRun =
-      engineOverride !== undefined ? { ...state.options, engine: engineOverride } : state.options;
-
-    const body: ConsensusRequest = {
-      prompt: state.prompt.trim(),
-      participants: state.participants,
-      options: optionsForRun,
-    };
-
-    try {
-      const response = await fetch("/api/consensus", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            processEvent(JSON.parse(line.slice(6)));
-          } catch {
-            /* skip */
-          }
-        }
-      }
-      return true;
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return false;
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      toast.error(`Consensus failed: ${msg}`);
-      useArenaStore.getState().completeConsensus(0, `Error: ${msg}`, 0);
-      return false;
+  // ── Stop ───────────────────────────────────────────────────
+  const handleCancel = useCallback(() => {
+    const s = useArenaStore.getState();
+    if (s.sweepActive && (s.isRunning || sweepLoop.current)) {
+      s.cancelSweep();
+      toast.info("Sweep stopped");
+    } else if (s.isRunning) {
+      s.cancelConsensus();
+      toast.info("Run stopped");
     }
   }, []);
 
-  const handleRunConsensus = useCallback(async () => {
+  // Esc stops the run from any view. Menus, tooltips and inline editors
+  // handle their own Escape and stop it from reaching the window.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // Esc in a text field means "clear / leave the field" (e.g. the History
+      // search box), not "stop the run that is streaming in the background".
+      const t = e.target;
+      if (t instanceof HTMLElement && (t.isContentEditable || t.matches("input, textarea, select")))
+        return;
+      handleCancel();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleCancel]);
+
+  // ── Run ────────────────────────────────────────────────────
+  const startRun = useCallback(async (engine?: EngineType) => {
     const state = useArenaStore.getState();
-    if (!state.prompt.trim()) {
-      toast.error("Enter a prompt first");
+    if (state.isRunning || sweepLoop.current) return;
+    const blocker = getRunBlocker(state);
+    if (blocker) {
+      toast.error(blocker);
       return;
     }
-    if (state.participants.length < 2) {
-      toast.error("Add at least 2 AI participants");
-      return;
-    }
-    if (state.options.judgeEnabled && !state.options.judgeModelId) {
-      toast.error("Choose a judge model or disable judge synthesis");
-      return;
-    }
+    clearPermalinkHash();
+    state.clearSweep();
+    state.setView("run");
+    toast.info("Run started — Esc stops it");
+    await runOneEngine(engine);
+  }, []);
 
-    // Clear any URL hash from a previously loaded shared view
-    if (typeof window !== "undefined" && window.location.hash) {
-      history.replaceState(null, "", window.location.pathname);
-    }
-    // Clear any previous sweep state when a single-engine run starts
-    useArenaStore.getState().clearSweep();
+  const handleRunConsensus = useCallback(() => startRun(), [startRun]);
 
-    setDrawerOpen(false);
-    toast.info("Consensus started — Esc to cancel");
-    await runOneEngine();
-  }, [runOneEngine]);
+  // Re-run keeps the engine of the run on screen, which after a sweep leg
+  // or an opened Compare engines row is not the one Setup holds.
+  const handleRerun = useCallback(
+    () => startRun(useArenaStore.getState().runOptions?.engine),
+    [startRun],
+  );
 
   const handleRunSweep = useCallback(async () => {
     const state = useArenaStore.getState();
-    if (!state.prompt.trim()) {
-      toast.error("Enter a prompt first");
+    if (state.isRunning || sweepLoop.current) return;
+    const blocker = getRunBlocker(state);
+    if (blocker) {
+      toast.error(blocker);
       return;
     }
-    if (state.participants.length < 2) {
-      toast.error("Add at least 2 AI participants");
-      return;
-    }
-    if (state.options.judgeEnabled && !state.options.judgeModelId) {
-      toast.error("Choose a judge model or disable judge synthesis");
-      return;
-    }
+    clearPermalinkHash();
+    state.startSweep(SWEEP_ENGINES);
+    state.setView("run");
+    toast.info(`Sweep started — running ${SWEEP_ENGINES.length} engines in turn. Esc cancels.`);
 
-    if (typeof window !== "undefined" && window.location.hash) {
-      history.replaceState(null, "", window.location.pathname);
-    }
-
-    const sweepEngines: EngineType[] = ["cvp", "blind-jury", "adversarial"];
-    const store = useArenaStore.getState();
-    store.startSweep(sweepEngines);
-    setDrawerOpen(false);
-    toast.info(
-      `Sweep started — running ${sweepEngines.length} engines sequentially. Esc cancels current.`,
-    );
-
-    for (let i = 0; i < sweepEngines.length; i++) {
-      // If the user cancelled the sweep (sweepActive flipped off), stop.
-      if (!useArenaStore.getState().sweepActive) break;
-      useArenaStore.getState().setSweepCurrentIndex(i);
-      const engine = sweepEngines[i];
-      const ok = await runOneEngine(engine);
-      if (!ok) {
-        // Aborted or errored. Don't push a partial snapshot — better to
-        // show whichever engines DID complete than a half-rendered card.
-        toast.error(`Sweep stopped on ${engine}.`);
-        break;
+    sweepLoop.current = true;
+    try {
+      for (let i = 0; i < SWEEP_ENGINES.length; i++) {
+        if (!useArenaStore.getState().sweepActive) break; // cancelled
+        useArenaStore.getState().setSweepCurrentIndex(i);
+        const engine = SWEEP_ENGINES[i];
+        const outcome = await runOneEngine(engine);
+        if (outcome !== "complete") {
+          // Keep whichever engines finished; a partial run is not a result.
+          if (outcome === "failed" && useArenaStore.getState().sweepActive) {
+            toast.error(`Sweep stopped: ${engineLabel(engine)} failed.`);
+          }
+          break;
+        }
+        // `getSnapshot()` labels the leg with the engine it ran (`runOptions`);
+        // the store's options still hold the user's pick.
+        const done = useArenaStore.getState();
+        done.pushSweepResult(done.getSnapshot());
       }
-      // Snapshot the just-completed engine BEFORE resetting state for
-      // the next one.
-      const snap = useArenaStore.getState().getSnapshot();
-      useArenaStore.getState().pushSweepResult(snap);
-      if (i < sweepEngines.length - 1 && useArenaStore.getState().sweepActive) {
-        useArenaStore.getState().reset();
+      const s = useArenaStore.getState();
+      if (s.sweepActive && s.sweepResults.length === SWEEP_ENGINES.length) {
+        toast.success("Sweep complete — compare the engines in the Run view.");
       }
+    } finally {
+      sweepLoop.current = false;
     }
-    if (useArenaStore.getState().sweepActive) {
-      toast.success("Sweep complete — compare engines below.");
-    }
-  }, [runOneEngine]);
+  }, []);
 
-  const canRun = !isRunning && !sharedView && prompt.trim().length > 0 && participants.length >= 2;
+  // ── Navigation between runs ────────────────────────────────
+  const handleNewRun = useCallback(() => {
+    handleCancel();
+    clearPermalinkHash();
+    useArenaStore.getState().setView("setup");
+  }, [handleCancel]);
 
-  const handleCancel = useCallback(() => {
+  // Loading a snapshot replaces the live run, so never do it by surprise.
+  // Opening a Compare engines row shows that engine's run under its own
+  // name: the sweep stops being "active" (no "Engine sweep" / "Sweep
+  // complete") but its results stay so the table remains, and the user's
+  // Setup options (engine, rounds, …) are kept rather than overwritten.
+  const handleOpenSnapshot = useCallback((snapshot: SessionSnapshot) => {
     const s = useArenaStore.getState();
-    if (s.sweepActive) {
-      s.cancelSweep();
-      toast.info("Sweep cancelled");
-    } else {
-      cancelConsensus();
-      toast.info("Consensus cancelled");
+    if (s.isRunning || sweepLoop.current) {
+      toast.info("Wait for the sweep to finish, or stop it, to open one engine's run.");
+      return;
     }
-  }, [cancelConsensus]);
+    s.dismissSweep();
+    s.loadSnapshot(snapshot, { sharedView: false, keepOptions: true });
+  }, []);
 
-  const handleLeaveSharedView = useCallback(() => {
-    if (typeof window !== "undefined" && window.location.hash) {
-      history.replaceState(null, "", window.location.pathname);
+  const handleOpenHistory = useCallback((entry: HistoryEntry) => {
+    const s = useArenaStore.getState();
+    if (s.isRunning || sweepLoop.current) {
+      toast.info("A run is in progress — stop it before opening a saved run.");
+      return;
     }
-    reset();
-  }, [reset]);
-
-  // ── Sidebar content (used both inline at lg+ and inside the mobile drawer) ──
-  const sidebarContent = (
-    <div className="space-y-5">
-      <div className="glass overflow-hidden">
-        <ConfigArt className="h-[78px]" />
-        <div className="p-4 sm:p-5 space-y-5">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-arena-accent/15 border border-arena-accent/30 flex items-center justify-center shrink-0">
-              <Settings2 className="w-3.5 h-3.5 text-arena-accent" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-arena-text tracking-tight">
-                Configuration
-              </p>
-              <p className="text-[10px] text-arena-muted">Provider, model & persona</p>
-            </div>
-          </div>
-          <AISelector />
-        </div>
-      </div>
-
-      <div className="glass p-4 sm:p-5 space-y-3.5">
-        <div className="flex items-center justify-between">
-          <p className="section-label">
-            <Layers className="w-2.5 h-2.5" /> Rounds
-          </p>
-          <span className="text-[9.5px] text-arena-muted/70">
-            {options.engine === "blind-jury" ? "Locked at 1" : "1–10"}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <button
-            onClick={() => setRoundCount(options.rounds - 1)}
-            disabled={isRunning || options.rounds <= 1 || options.engine === "blind-jury"}
-            className="btn-ghost w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <Minus className="w-3.5 h-3.5" />
-          </button>
-          <div className="flex-1 text-center">
-            <span className="text-3xl font-bold text-arena-text font-mono tabular-nums tracking-tight">
-              {options.engine === "blind-jury" ? 1 : options.rounds}
-            </span>
-            <p className="text-[9px] text-arena-muted uppercase tracking-wider mt-0.5">
-              debate rounds
-            </p>
-          </div>
-          <button
-            onClick={() => setRoundCount(options.rounds + 1)}
-            disabled={isRunning || options.rounds >= 10 || options.engine === "blind-jury"}
-            className="btn-ghost w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      <div className="glass p-4 sm:p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <Cpu className="w-3 h-3 text-arena-accent" />
-          <p className="section-label">Protocol & Engine</p>
-        </div>
-        <ConfigPanel />
-      </div>
-
-      {/* Sub-xl panels: visible whenever the right rail is hidden */}
-      <div className="space-y-5 xl:hidden">
-        <CostMeter />
-        <ConfidenceTrajectory />
-        <DisagreementPanel />
-        <ClaimsPanel />
-      </div>
-
-      {isRunning && (
-        <div className="glass p-4 space-y-3 border border-arena-accent/40 shadow-glow-orange-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold text-arena-glow flex items-center gap-1.5">
-              <span className="relative flex w-2 h-2">
-                <span className="animate-ping absolute inline-flex w-full h-full rounded-full bg-arena-accent opacity-75" />
-                <span className="relative inline-flex w-2 h-2 rounded-full bg-arena-accent" />
-              </span>
-              Round {currentRound} of {options.rounds}
-            </p>
-            <button
-              onClick={handleCancel}
-              className="p-1.5 rounded-md hover:bg-arena-danger/15 text-arena-muted hover:text-arena-danger transition-colors"
-              title="Cancel (Esc)"
-            >
-              <Square className="w-3 h-3 fill-current" />
-            </button>
-          </div>
-          <div className="h-1.5 bg-black/40 rounded-full overflow-hidden border border-white/[0.04]">
-            <div
-              className="h-full progress-orange rounded-full transition-all duration-500"
-              style={{ width: `${progress * 100}%` }}
-            />
-          </div>
-          <p className="text-[9.5px] text-arena-muted">
-            Press{" "}
-            <kbd className="px-1.5 py-0.5 bg-black/45 rounded text-[8.5px] font-mono border border-white/10">
-              Esc
-            </kbd>{" "}
-            to cancel
-          </p>
-        </div>
-      )}
-
-      {finalScore !== null && (
-        <div className="glass p-4 border border-arena-success/40">
-          <p className="text-[10px] text-arena-success font-semibold uppercase tracking-wider">
-            Final Consensus
-          </p>
-          <p className="text-3xl font-bold text-arena-success font-mono tabular-nums mt-1">
-            {finalScore}%
-          </p>
-          <button
-            onClick={reset}
-            className="mt-3 flex items-center gap-1.5 text-[11px] text-arena-muted hover:text-arena-glow transition-colors"
-          >
-            <RotateCcw className="w-3 h-3" /> Reset session
-          </button>
-        </div>
-      )}
-    </div>
-  );
+    clearPermalinkHash();
+    s.clearSweep();
+    s.loadSnapshot(entry.snapshot, { sharedView: false });
+    s.setView("run");
+  }, []);
 
   return (
-    <div className="cosmic-shell min-h-screen text-arena-text relative">
-      {/* Shared-view banner */}
-      {sharedView && (
-        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 px-4 sm:px-6 py-2 bg-arena-accent/10 border-b border-arena-accent/25 backdrop-blur-md">
-          <div className="flex items-center gap-2 text-[11px] text-arena-glow min-w-0">
-            <Eye className="w-3 h-3 shrink-0" />
-            <span className="truncate">Viewing a shared session.</span>
-          </div>
-          <button
-            onClick={handleLeaveSharedView}
-            className="text-[11px] text-arena-glow hover:text-arena-accent transition-colors shrink-0"
-          >
-            Exit
-          </button>
-        </div>
-      )}
-
-      {/* Onboarding */}
-      {showOnboarding && participants.length === 0 && !sharedView && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-md cursor-pointer p-4"
-          onClick={() => setShowOnboarding(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="onboarding-title"
+    <AppShell
+      historyCount={historyCount}
+      headerActions={
+        <a
+          href="https://github.com/marceloceccon/askgrokmcp"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hidden text-[13px] text-fg-muted hover:text-fg lg:inline"
         >
-          <div className="glass-strong px-7 sm:px-12 py-8 sm:py-10 max-w-md text-center space-y-6 animate-in">
-            <div className="relative w-16 h-16 mx-auto">
-              <div className="absolute inset-0 rounded-2xl bg-arena-accent/20 blur-xl" />
-              <div className="relative w-16 h-16 rounded-2xl flex items-center justify-center bg-gradient-to-br from-[#ff8a3a] to-[#e25400] shadow-glow-orange">
-                <Users className="w-7 h-7 text-white" strokeWidth={2} />
-              </div>
-            </div>
-            <div>
-              <h2
-                id="onboarding-title"
-                className="text-[19px] sm:text-xl font-semibold text-arena-text tracking-tight"
-              >
-                Convene the RoundTable
-              </h2>
-              <p className="text-[13px] text-arena-muted mt-2 leading-relaxed">
-                Open the panel, pick a model and persona, then enter your prompt to start a multi-AI
-                consensus debate.
-              </p>
-            </div>
-            <div className="flex items-center justify-center gap-2.5 text-[11px] text-arena-glow font-medium flex-wrap">
-              <span>Panel</span>
-              <ArrowRight className="w-3 h-3" />
-              <span>Model</span>
-              <ArrowRight className="w-3 h-3" />
-              <span>Persona</span>
-              <ArrowRight className="w-3 h-3" />
-              <Sparkles className="w-3 h-3" />
-            </div>
-          </div>
-        </div>
+          Protocol inspired by askgrokmcp
+        </a>
+      }
+    >
+      {view === "setup" && (
+        <SetupView
+          onRun={handleRunConsensus}
+          onSweep={handleRunSweep}
+          onCancel={handleCancel}
+          showGettingStarted={historyCount === 0}
+        />
       )}
-
-      {/* Header */}
-      <header className="sticky top-0 z-30 px-4 sm:px-6 py-3 sm:py-4 backdrop-blur-2xl bg-[#02070F]/55 border-b border-white/[0.04]">
-        <div className="flex items-center justify-between gap-3 max-w-[1800px] mx-auto">
-          <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
-            {/* Mobile menu button — visible below lg */}
-            <button
-              onClick={() => setDrawerOpen(true)}
-              className="lg:hidden p-2 -ml-1 rounded-lg text-arena-text hover:bg-white/[0.06] transition-colors"
-              aria-label="Open configuration panel"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-
-            {/* Logo mark */}
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 shrink-0">
-              <div className="absolute inset-0 rounded-xl bg-arena-accent/35 blur-lg" />
-              <div className="relative w-full h-full rounded-xl bg-gradient-to-br from-[#ff8a3a] via-[#ff6200] to-[#a83b00] flex items-center justify-center shadow-glow-orange-sm border border-white/15">
-                <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
-                  <circle cx="11" cy="11" r="9" stroke="white" strokeWidth="1.4" opacity="0.85" />
-                  <circle cx="11" cy="11" r="5" stroke="white" strokeWidth="1.4" opacity="0.95" />
-                  <circle cx="11" cy="11" r="2" fill="white" />
-                </svg>
-              </div>
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-[15px] sm:text-[17px] font-semibold text-arena-text tracking-tight leading-none">
-                RoundTable
-              </h1>
-              <p className="hidden sm:block text-[10px] text-arena-muted/90 uppercase tracking-[0.22em] mt-1.5 font-medium truncate">
-                Multi-AI Consensus Playground
-              </p>
-              <p className="sm:hidden text-[9px] text-arena-muted/90 uppercase tracking-[0.16em] mt-1 font-medium truncate">
-                Consensus Playground
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <div className="hidden md:flex items-center gap-2 px-3.5 py-2 glass-pill text-[11px] text-arena-muted">
-              <span className="w-1.5 h-1.5 rounded-full bg-arena-success animate-pulse" />
-              <span className="font-medium">Live</span>
-              <span className="text-arena-muted/40">•</span>
-              <span className="tabular-nums">{participants.length} participants</span>
-            </div>
-            <div className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 glass-pill text-[10px] text-arena-glow">
-              <span className="w-1.5 h-1.5 rounded-full bg-arena-success animate-pulse" />
-              <span className="tabular-nums font-medium">{participants.length}</span>
-            </div>
-            <a
-              href="https://github.com/marceloceccon/askgrokmcp"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-arena-muted hover:text-arena-glow transition-colors hidden lg:block"
-            >
-              Protocol inspired by askgrokmcp →
-            </a>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Layout */}
-      <div
-        className="flex max-w-[1800px] mx-auto"
-        style={{ minHeight: "calc(100vh - var(--rt-header-h))" }}
-      >
-        {/* ── Left Sidebar (inline at lg+) ─────────────────── */}
-        <aside
-          className="hidden lg:block w-[340px] shrink-0 px-5 py-6 overflow-y-auto sticky self-start"
-          style={{
-            top: "var(--rt-header-h)",
-            maxHeight: "calc(100vh - var(--rt-header-h))",
-          }}
-        >
-          {sidebarContent}
-        </aside>
-
-        {/* ── Mobile drawer (< lg) ─────────────────────────── */}
-        {drawerOpen && (
-          <div
-            className="lg:hidden fixed inset-0 z-40 flex"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Configuration panel"
-          >
-            <div
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in"
-              onClick={() => setDrawerOpen(false)}
-              style={{ animationDuration: "200ms" }}
-              aria-hidden
-            />
-            <aside
-              className="relative w-[88%] max-w-[360px] h-full overflow-y-auto px-4 py-5 animate-in"
-              style={{
-                background: "linear-gradient(135deg, rgba(6, 16, 38, 0.96), rgba(2, 7, 15, 0.98))",
-                borderRight: "1px solid rgba(77, 122, 199, 0.22)",
-                boxShadow: "12px 0 40px rgba(0, 0, 0, 0.6)",
-                animationDuration: "260ms",
-              }}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <p className="section-label">
-                  <Settings2 className="w-2.5 h-2.5" /> Workbench
-                </p>
-                <button
-                  onClick={() => setDrawerOpen(false)}
-                  className="p-1.5 rounded-lg text-arena-muted hover:text-arena-text hover:bg-white/[0.06] transition-colors"
-                  aria-label="Close panel"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              {sidebarContent}
-            </aside>
-          </div>
-        )}
-
-        {/* ── Center Main ──────────────────────────────────── */}
-        <main className="flex-1 flex flex-col min-w-0 px-4 sm:px-5 lg:px-6 py-5 sm:py-6 xl:pr-[360px]">
-          {/* Hero command card */}
-          <div className="glass-strong overflow-hidden mb-5 sm:mb-6 animate-in">
-            <ConsensusNodesArt className="h-[120px] sm:h-[160px] md:h-[180px]" />
-            <div className="p-4 sm:p-6 md:p-7 space-y-4 sm:space-y-5">
-              <div>
-                <p className="text-[10px] text-arena-glow uppercase tracking-[0.2em] font-semibold mb-2">
-                  Consensus Console
-                </p>
-                <h2 className="text-[18px] sm:text-[20px] md:text-[22px] font-semibold text-arena-text tracking-tight leading-tight">
-                  Pose a question to the table.
-                </h2>
-                <p className="text-[12.5px] sm:text-[13px] text-arena-muted mt-1.5 leading-relaxed max-w-2xl">
-                  Multiple AI minds debate, refine, and converge — surfacing both consensus and
-                  productive disagreement.
-                </p>
-              </div>
-              <div className="glass-input p-1">
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  disabled={isRunning || sharedView}
-                  placeholder="Enter a topic, claim, or question for multi-AI consensus analysis…"
-                  rows={3}
-                  className="w-full bg-transparent px-4 sm:px-5 py-3.5 sm:py-4 text-[13.5px] sm:text-[14px] leading-relaxed text-arena-text placeholder:text-arena-muted/45 focus:outline-none resize-none disabled:opacity-40"
-                />
-              </div>
-              <PromptLibrary />
-              <div className="flex items-center justify-between gap-3 sm:gap-4 flex-wrap">
-                <div className="flex items-center gap-2.5 sm:gap-3 text-[11px] sm:text-[11.5px] text-arena-muted">
-                  <span className="flex items-center gap-1.5">
-                    <Users className="w-3 h-3 text-arena-glow" />
-                    <span className="tabular-nums text-arena-text font-medium">
-                      {participants.length}
-                    </span>
-                    <span className="hidden sm:inline">
-                      participant{participants.length !== 1 ? "s" : ""}
-                    </span>
-                  </span>
-                  <span className="text-arena-border-strong">·</span>
-                  <span className="flex items-center gap-1.5">
-                    <Layers className="w-3 h-3 text-arena-glow" />
-                    <span className="text-arena-text font-medium">
-                      {options.engine === "blind-jury"
-                        ? "Blind Jury"
-                        : options.engine === "adversarial"
-                          ? `Red Team · ${options.rounds} round${options.rounds !== 1 ? "s" : ""}`
-                          : `${options.rounds} round${options.rounds !== 1 ? "s" : ""}`}
-                    </span>
-                  </span>
-                </div>
-                {isRunning ? (
-                  <button
-                    onClick={handleCancel}
-                    className="flex items-center gap-2 bg-arena-danger/15 border border-arena-danger/40 text-arena-danger rounded-xl px-4 sm:px-5 py-2.5 text-[12.5px] sm:text-[13px] font-semibold hover:bg-arena-danger/25 active:scale-[0.98] transition-colors"
-                  >
-                    <Square className="w-3.5 h-3.5 fill-current" />
-                    {sweepActive ? "Cancel Sweep" : "Cancel"}
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleRunSweep}
-                      disabled={!canRun}
-                      title="Run the same prompt through CVP, Blind Jury, and Adversarial Red Team in sequence"
-                      className="btn-ghost flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-[12px] sm:text-[12.5px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                      Sweep
-                    </button>
-                    <button
-                      onClick={handleRunConsensus}
-                      disabled={!canRun}
-                      className="btn-orange flex items-center gap-2 px-5 sm:px-6 py-2.5 text-[13px] sm:text-[13.5px] shine"
-                    >
-                      <Play className="w-4 h-4 fill-current" />
-                      Run Consensus
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <ResultPanel />
-          <SweepResultsPanel />
-        </main>
-      </div>
-
-      <MessageFlowDiagram />
-      <BackToTop />
-    </div>
+      {view === "run" && (
+        <RunView
+          onCancel={handleCancel}
+          onNewRun={handleNewRun}
+          onRerun={handleRerun}
+          onOpenSnapshot={handleOpenSnapshot}
+        />
+      )}
+      {view === "history" && <HistoryView onOpen={handleOpenHistory} />}
+    </AppShell>
   );
+}
+
+// ── Helpers ────────────────────────────────────────────────
+
+function clearPermalinkHash() {
+  if (typeof window === "undefined" || !window.location.hash) return;
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+}
+
+/** Best-effort error text for a non-OK /api/consensus response. */
+async function describeHttpError(response: Response): Promise<string> {
+  try {
+    const data = (await response.json()) as { error?: unknown };
+    if (typeof data?.error === "string" && data.error) return data.error;
+  } catch {
+    /* not JSON */
+  }
+  return `HTTP ${response.status}`;
+}
+
+type RunOutcome = "complete" | "failed" | "aborted";
+
+/**
+ * Stream one run from /api/consensus into the store. `engineOverride`
+ * replaces `options.engine` for this request only (the sweep); either way
+ * the rounds are raised to the engine's minimum (Red team runs ≥ 3).
+ */
+async function runOneEngine(engineOverride?: EngineType): Promise<RunOutcome> {
+  const state = useArenaStore.getState();
+  const engine = engineOverride ?? state.options.engine;
+  const controller = state.startConsensus(engine);
+  const body: ConsensusRequest = {
+    prompt: state.prompt.trim(),
+    participants: state.participants,
+    options: optionsForEngine(state.options, engine),
+  };
+
+  let outcome: RunOutcome | null = null;
+
+  try {
+    const response = await fetch("/api/consensus", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok || !response.body) throw new Error(await describeHttpError(response));
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) outcome = handleSseLine(line) ?? outcome;
+    }
+    for (const line of (buffer + decoder.decode()).split("\n")) {
+      outcome = handleSseLine(line) ?? outcome;
+    }
+  } catch (err) {
+    if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+      return "aborted";
+    }
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    toast.error(`Consensus failed: ${msg}`);
+    if (useArenaStore.getState().abortController === controller) {
+      useArenaStore.getState().failConsensus(msg);
+    }
+    return "failed";
+  }
+
+  if (outcome) return outcome;
+  if (controller.signal.aborted) return "aborted";
+  // The stream closed without `consensus-complete` or `error`.
+  const s = useArenaStore.getState();
+  if (s.isRunning && s.abortController === controller) {
+    const msg = "the stream ended before the run finished";
+    toast.error(`Consensus failed: ${msg}`);
+    s.failConsensus(msg);
+  }
+  return "failed";
+}
+
+/** Parse one `data: {...}` SSE line and apply it; malformed lines are skipped. */
+function handleSseLine(line: string): "complete" | "failed" | null {
+  if (!line.startsWith("data: ")) return null;
+  try {
+    return processEvent(JSON.parse(line.slice(6)) as ConsensusEvent);
+  } catch {
+    return null;
+  }
 }
 
 // ── SSE Event Processor ────────────────────────────────────
@@ -712,9 +367,10 @@ function flushTokens() {
   }
 }
 
-function processEvent(event: ConsensusEvent) {
+/** Apply one SSE event. Returns the run's outcome on a terminal event. */
+function processEvent(event: ConsensusEvent): "complete" | "failed" | null {
   const s = useArenaStore.getState();
-  if (!s.isRunning) return;
+  if (!s.isRunning) return null;
 
   switch (event.type) {
     case "round-start":
@@ -785,16 +441,22 @@ function processEvent(event: ConsensusEvent) {
         toast.error(`Claim extraction failed: ${event.digest.error}`);
       }
       break;
-    case "consensus-complete":
+    case "consensus-complete": {
       flushTokens();
       s.completeConsensus(event.finalScore, event.summary, event.roundsCompleted);
-      toast.success(`Consensus complete! Score: ${event.finalScore}%`);
-      break;
+      if (!s.sweepActive) toast.success(`Consensus complete! Score: ${event.finalScore}%`);
+      const snapshot = s.getSnapshot();
+      if (saveCompletedRun(snapshot)) toast.success("Saved to history");
+      else if (snapshot.rounds.length > 0)
+        toast.error("Couldn't save to history (storage unavailable or full)");
+      return "complete";
+    }
     case "error":
       tokenBuffer.clear();
       judgeTokenBuffer = "";
       toast.error(event.message);
-      s.completeConsensus(0, event.message, 0);
-      break;
+      s.failConsensus(event.message);
+      return "failed";
   }
+  return null;
 }

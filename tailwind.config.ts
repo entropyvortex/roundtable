@@ -1,98 +1,76 @@
 import type { Config } from "tailwindcss";
 
+/** `rgb(var(--token) / <alpha-value>)` so `bg-accent/10` etc. work. */
+const token = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
+
 const config: Config = {
-  darkMode: "class",
+  // Colours come from the CSS variables in app/globals.css, which switch
+  // on `data-theme` and on `prefers-color-scheme`. `dark:` variants match
+  // only the forced override, so style with tokens instead.
+  darkMode: ["selector", '[data-theme="dark"]'],
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        arena: {
-          bg: "#02070F",
-          surface: "rgba(8, 20, 44, 0.55)",
-          "surface-solid": "#06112A",
-          border: "rgba(77, 122, 199, 0.22)",
-          "border-strong": "rgba(77, 122, 199, 0.45)",
-          accent: "#FF6200",
-          glow: "#FF9A4D",
-          blue: "#4D7AC7",
-          "blue-deep": "#003087",
-          success: "#34d399",
-          warning: "#fbbf24",
-          danger: "#f87171",
-          muted: "#8B9CB8",
-          text: "#F1F5FF",
+        bg: token("bg"),
+        surface: {
+          DEFAULT: token("surface"),
+          2: token("surface-2"),
         },
+        border: {
+          DEFAULT: token("border"),
+          strong: token("border-strong"),
+        },
+        fg: {
+          DEFAULT: token("fg"),
+          muted: token("fg-muted"),
+        },
+        accent: {
+          DEFAULT: token("accent"),
+          fg: token("accent-fg"),
+        },
+        success: token("success"),
+        warning: token("warning"),
+        danger: token("danger"),
+        info: token("info"),
+        ring: token("ring"),
+      },
+      // Plain `border` / `divide-*` use the border token by default.
+      borderColor: {
+        DEFAULT: token("border"),
       },
       fontFamily: {
-        mono: ["JetBrains Mono", "Fira Code", "monospace"],
         sans: [
-          "Inter",
-          "-apple-system",
-          "BlinkMacSystemFont",
-          "Segoe UI",
+          "var(--font-sans)",
+          "ui-sans-serif",
           "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
           "sans-serif",
         ],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },
-      backdropBlur: {
-        xs: "2px",
+      borderRadius: {
+        control: "8px",
+        card: "12px",
       },
       boxShadow: {
-        glass:
-          "0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 2px 8px 0 rgba(0, 48, 135, 0.18), inset 0 1px 0 0 rgba(255, 255, 255, 0.04)",
-        "glass-lg":
-          "0 24px 48px -12px rgba(0, 0, 0, 0.55), 0 12px 24px -8px rgba(0, 48, 135, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.05)",
-        "glass-xl":
-          "0 40px 80px -20px rgba(0, 0, 0, 0.65), 0 20px 40px -10px rgba(0, 48, 135, 0.32), inset 0 1px 0 0 rgba(255, 255, 255, 0.06)",
-        "glow-orange": "0 0 24px 0 rgba(255, 98, 0, 0.35), 0 0 48px 0 rgba(255, 98, 0, 0.18)",
-        "glow-orange-sm": "0 0 12px 0 rgba(255, 98, 0, 0.4)",
-        "glow-blue": "0 0 24px 0 rgba(77, 122, 199, 0.3), 0 0 48px 0 rgba(77, 122, 199, 0.15)",
-        "inner-glow":
-          "inset 0 1px 0 0 rgba(255, 255, 255, 0.06), inset 0 0 0 1px rgba(77, 122, 199, 0.18)",
-      },
-      animation: {
-        "pulse-slow": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        "spin-slow": "spin 20s linear infinite",
-        "spin-slower": "spin 40s linear infinite",
-        "float-1": "float1 18s ease-in-out infinite",
-        "float-2": "float2 22s ease-in-out infinite",
-        "float-3": "float3 26s ease-in-out infinite",
-        "ray-sweep": "raySweep 24s linear infinite",
-        "ray-sweep-2": "raySweep 32s linear infinite reverse",
-        "glow-pulse": "glowPulse 4s ease-in-out infinite",
-        shimmer: "shimmer 3s linear infinite",
-        "node-pulse": "nodePulse 3.5s ease-in-out infinite",
+        // Real shadows only on popovers / modals.
+        popover:
+          "0 8px 24px -8px rgb(var(--shadow-color) / 0.18), 0 2px 6px rgb(var(--shadow-color) / 0.08)",
       },
       keyframes: {
-        float1: {
-          "0%,100%": { transform: "translate(0,0)" },
-          "50%": { transform: "translate(30px, -22px)" },
+        "fade-in": {
+          from: { opacity: "0", transform: "translateY(4px)" },
+          to: { opacity: "1", transform: "none" },
         },
-        float2: {
-          "0%,100%": { transform: "translate(0,0)" },
-          "50%": { transform: "translate(-26px, 30px)" },
-        },
-        float3: {
-          "0%,100%": { transform: "translate(0,0)" },
-          "50%": { transform: "translate(18px, 26px)" },
-        },
-        raySweep: {
-          "0%": { transform: "translateX(-15%) rotate(-8deg)", opacity: "0.4" },
-          "50%": { opacity: "0.85" },
-          "100%": { transform: "translateX(15%) rotate(-8deg)", opacity: "0.4" },
-        },
-        glowPulse: {
-          "0%,100%": { opacity: "0.55", filter: "blur(20px)" },
-          "50%": { opacity: "0.95", filter: "blur(28px)" },
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
-        },
-        nodePulse: {
-          "0%,100%": { opacity: "0.7", transform: "scale(1)" },
-          "50%": { opacity: "1", transform: "scale(1.08)" },
-        },
+      },
+      animation: {
+        // ≤ 200ms, opacity/transform only; zeroed under prefers-reduced-motion.
+        "fade-in": "fade-in 150ms ease-out both",
       },
     },
   },
