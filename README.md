@@ -1,5 +1,15 @@
 <div align="center">
 
+**Stops you from trusting one model's answer without seeing where other models disagree.**
+
+[![CI](https://github.com/entropyvortex/roundtable/actions/workflows/ci.yml/badge.svg)](https://github.com/entropyvortex/roundtable/actions/workflows/ci.yml)
+
+![RoundTable Run view: the brief (score, judge verdict, where they split, who moved) beside the transcript](screenshots/screenshot.jpeg)
+
+Used in real Vortex Serviços and SabIA production work to stress-test decisions before they ship.
+
+Tests and CI: ESLint, Prettier, the unit tests and a production build run on every push and pull request.
+
 > **AI Experiment / Showcase** — This project is built for educational and research purposes. It demonstrates how multiple AI models can be orchestrated into structured consensus processes. Not intended for production decision-making.
 
 # RoundTable
@@ -35,8 +45,6 @@ No database. No auth. No external services. Just add your API keys and go.
 ---
 
 ## Screenshot
-
-![RoundTable Run view: the brief (score, judge verdict, where they split, who moved) beside the transcript](screenshots/screenshot.jpeg)
 
 _Dark theme shown; the app follows your system preference and has a light theme ([screenshot](screenshots/screenshot-light.jpeg))._
 
