@@ -8,7 +8,7 @@ import {
   readThemePreference,
   setThemePreference,
 } from "@/components/ui";
-import { THEME_INIT_SCRIPT } from "@/components/ui/theme-script";
+import { THEME_INIT_SCRIPT, toInlineScriptLiteral } from "@/components/ui/theme-script";
 import AppShell from "@/components/AppShell";
 import { useArenaStore } from "@/lib/store";
 
@@ -83,6 +83,15 @@ describe("THEME_INIT_SCRIPT", () => {
       throw new Error("denied");
     });
     expect(run).not.toThrow();
+  });
+});
+
+describe("toInlineScriptLiteral", () => {
+  it("escapes characters that could break out of an inline script", () => {
+    const value = "</script><script>alert(1)</script>\u2028\u2029";
+    const literal = toInlineScriptLiteral(value);
+    expect(literal).not.toMatch(/[<>/\u2028\u2029]/);
+    expect(new Function(`return ${literal};`)()).toBe(value);
   });
 });
 
