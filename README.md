@@ -10,8 +10,6 @@ Used in real Vortex Serviços and SabIA production work to stress-test decisions
 
 Tests and CI: ESLint, Prettier, the unit tests and a production build run on every push and pull request.
 
-> **AI Experiment / Showcase** — This project is built for educational and research purposes. It demonstrates how multiple AI models can be orchestrated into structured consensus processes. Not intended for production decision-making.
-
 # RoundTable
 
 ### Multi-AI Consensus Playground
