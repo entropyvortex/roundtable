@@ -7,10 +7,15 @@
 // - Request abort signal is forwarded to the engine
 // - Basic rate limiting via in-memory sliding window
 
-import type { ConsensusEvent, ConsensusOptions, EngineType, Participant } from "@/lib/types";
+import type { ConsensusEvent, ConsensusOptions, EngineType } from "@/lib/types";
 import { runConsensus } from "@/lib/consensus-engine";
-import { composeCustomPersona, getPersona, sanitizeCustomPersonaSpec } from "@/lib/personas";
-import { findResolvedModel } from "@/lib/providers";
+import {
+  clientIp,
+  createRateLimiter,
+  jsonError,
+  judgeModelError,
+  rebuildParticipants,
+} from "@/lib/route-guards";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -23,38 +28,7 @@ const MAX_ROUNDS = 10;
 
 // ── Simple in-memory rate limiter (per-IP, sliding window) ─
 
-const RATE_WINDOW_MS = 60_000; // 1 minute
-const RATE_LIMIT = 5; // max requests per window
-const requestLog = new Map<string, number[]>();
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const log = requestLog.get(ip) ?? [];
-  const recent = log.filter((t) => now - t < RATE_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT) return true;
-  recent.push(now);
-  requestLog.set(ip, recent);
-  return false;
-}
-
-// Periodic cleanup to prevent memory leak.
-// On Vercel serverless this module is fresh per cold start, so the
-// setInterval is harmless. In dev with Next.js HMR the same module can
-// be re-evaluated many times; without this guard we'd register a new
-// interval per HMR pass and they'd never get cleared. Keying on a
-// global symbol prevents accumulation across reloads.
-const CLEANUP_KEY = Symbol.for("roundtable.consensus-route.cleanup");
-const globalAny = globalThis as unknown as Record<symbol, NodeJS.Timeout | undefined>;
-if (!globalAny[CLEANUP_KEY]) {
-  globalAny[CLEANUP_KEY] = setInterval(() => {
-    const now = Date.now();
-    for (const [ip, log] of requestLog.entries()) {
-      const recent = log.filter((t) => now - t < RATE_WINDOW_MS);
-      if (recent.length === 0) requestLog.delete(ip);
-      else requestLog.set(ip, recent);
-    }
-  }, RATE_WINDOW_MS);
-}
+const isRateLimited = createRateLimiter("roundtable.consensus-route.cleanup");
 
 // ── Options parsing & validation ───────────────────────────
 
@@ -112,16 +86,8 @@ function parseOptions(body: LooseRequestBody): ConsensusOptions {
 
 export async function POST(request: Request) {
   // Rate limit by IP
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown";
-
-  if (isRateLimited(ip)) {
-    return new Response(JSON.stringify({ error: "Rate limit exceeded. Try again in a minute." }), {
-      status: 429,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (isRateLimited(clientIp(request))) {
+    return jsonError("Rate limit exceeded. Try again in a minute.", 429);
   }
 
   const body = (await request.json()) as LooseRequestBody;
@@ -166,70 +132,13 @@ export async function POST(request: Request) {
   // Never trust client-supplied systemPrompts or arbitrary model IDs.
   // Re-resolve models and personas from their IDs.
 
-  const validatedParticipants: Participant[] = [];
-  for (const p of body.participants as Array<{
-    id?: unknown;
-    modelInfo?: { id?: unknown };
-    persona?: { id?: unknown };
-    customPersonaSpec?: unknown;
-  }>) {
-    const modelCompositeId = typeof p.modelInfo?.id === "string" ? p.modelInfo.id : "";
-    const resolved = findResolvedModel(modelCompositeId);
-    if (!resolved) {
-      return new Response(JSON.stringify({ error: `Model not available: ${modelCompositeId}` }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    // Rebuild persona from server-side definitions (ignore client systemPrompt).
-    // For custom personas, sanitize and compose from the axis spec instead.
-    const personaId = typeof p.persona?.id === "string" ? p.persona.id : "";
-    let persona;
-    let customSpec;
-    if (personaId === "custom") {
-      const sanitized = sanitizeCustomPersonaSpec(p.customPersonaSpec);
-      if (!sanitized) {
-        return new Response(JSON.stringify({ error: "Invalid custom persona spec" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      persona = composeCustomPersona(sanitized);
-      customSpec = sanitized;
-    } else {
-      persona = getPersona(personaId);
-    }
-
-    validatedParticipants.push({
-      id: typeof p.id === "string" ? p.id : `p-${validatedParticipants.length + 1}`,
-      modelInfo: {
-        id: modelCompositeId,
-        providerId: resolved.providerId,
-        providerName: resolved.providerName,
-        modelId: resolved.modelId,
-      },
-      persona,
-      ...(customSpec ? { customPersonaSpec: customSpec } : {}),
-    });
-  }
+  const rebuilt = rebuildParticipants(body.participants);
+  if ("error" in rebuilt) return jsonError(rebuilt.error);
+  const validatedParticipants = rebuilt.participants;
 
   // Validate judge model, if requested
-  if (options.judgeEnabled) {
-    if (!options.judgeModelId) {
-      return new Response(
-        JSON.stringify({ error: "Judge enabled but no judgeModelId was supplied" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    const judgeResolved = findResolvedModel(options.judgeModelId);
-    if (!judgeResolved) {
-      return new Response(
-        JSON.stringify({ error: `Judge model not available: ${options.judgeModelId}` }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
-    }
-  }
+  const judgeError = judgeModelError(options.judgeEnabled, options.judgeModelId);
+  if (judgeError) return jsonError(judgeError);
 
   // ── Stream with abort support ────────────────────────────
 
