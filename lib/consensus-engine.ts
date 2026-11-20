@@ -13,13 +13,14 @@
 //                  synthesis
 //
 // Protocol primitives come from ai-consensus-core: the round prompts,
-// confidence parsing, consensus score, disagreement detection, judge
+// confidence parsing (last CONFIDENCE marker), consensus score,
+// disagreement detection, judge
 // prompts and section parsing, the claim extractor and the cost-cap
 // error. Every model call goes through the core `ModelCaller` adapter
 // in ./core-caller (Vercel AI SDK). The three orchestration loops below
 // stay here: Blind jury and Red team have no core equivalent, and CVP
-// keeps Roundtable's 1-seat runs and trailing-marker confidence, which
-// `ConsensusEngine.run()` does not offer (see the PR notes).
+// keeps Roundtable's 1-seat runs, which `ConsensusEngine.run()` rejects
+// (see the PR notes).
 //
 // All engines accept an optional AbortSignal and forward it to
 // every provider call.
@@ -33,8 +34,8 @@ import {
   CostCapExceededError,
   detectDisagreements as coreDetectDisagreements,
   extractClaims,
+  extractConfidence,
   extractJudgeSection,
-  extractTrailingConfidence,
   getRoundMeta as coreGetRoundMeta,
   parseClaimsJSON,
   shuffle,
@@ -265,9 +266,6 @@ function buildJudgeContext(finalResponses: RoundResponse[], participants: Partic
 }
 
 // ── Extraction and scoring (core) ──────────────────────────
-
-/** Last `CONFIDENCE: NN` marker followed by digits (0-100, default 50). */
-const extractConfidence = extractTrailingConfidence;
 
 function calculateConsensusScore(responses: RoundResponse[]): number {
   return consensusScore(responses.filter((r) => !r.error).map((r) => r.confidence));
