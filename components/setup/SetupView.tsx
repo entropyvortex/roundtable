@@ -9,6 +9,7 @@
 import { useCallback } from "react";
 import { getRunBlocker } from "@/lib/run-blocker";
 import { useArenaStore } from "@/lib/store";
+import AttemptsEditor from "./AttemptsEditor";
 import EstimateBar from "./EstimateBar";
 import GettingStarted from "./GettingStarted";
 import PanelEditor from "./PanelEditor";
@@ -39,6 +40,8 @@ export default function SetupView({
     onRun();
   }, [onRun]);
 
+  const isCompare = useArenaStore((s) => s.options.engine === "compare-attempts");
+
   return (
     <div className="mx-auto flex w-full max-w-[860px] flex-col gap-5">
       <header>
@@ -49,7 +52,8 @@ export default function SetupView({
         </p>
       </header>
       {showGettingStarted && <GettingStarted />}
-      <QuestionEditor onSubmit={submitFromKeyboard} />
+      <QuestionEditor onSubmit={submitFromKeyboard} variant={isCompare ? "task" : "question"} />
+      {isCompare && <AttemptsEditor />}
       <PanelEditor />
       <ProtocolPicker />
       <EstimateBar onRun={onRun} onSweep={onSweep} onCancel={onCancel} />

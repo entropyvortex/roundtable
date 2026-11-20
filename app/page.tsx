@@ -25,6 +25,8 @@ import { SWEEP_ENGINES } from "@/lib/sweep";
 import { decodeSnapshotFromHash } from "@/lib/session";
 import { useArenaStore } from "@/lib/store";
 import type {
+  CompareEvent,
+  CompareRequest,
   ConsensusEvent,
   ConsensusRequest,
   EngineType,
@@ -266,17 +268,35 @@ type RunOutcome = "complete" | "failed" | "aborted";
 async function runOneEngine(engineOverride?: EngineType): Promise<RunOutcome> {
   const state = useArenaStore.getState();
   const engine = engineOverride ?? state.options.engine;
+  const isCompare = engine === "compare-attempts";
   const controller = state.startConsensus(engine);
-  const body: ConsensusRequest = {
-    prompt: state.prompt.trim(),
-    participants: state.participants,
-    options: optionsForEngine(state.options, engine),
-  };
+  const body: ConsensusRequest | CompareRequest = isCompare
+    ? {
+        task: state.prompt.trim(),
+        attempts: state.attempts.map((a) => ({
+          label: a.label,
+          content: a.content,
+          checks: a.checks.filter((c) => c.name.trim()).map((c) => ({ ...c, name: c.name.trim() })),
+        })),
+        participants: state.participants,
+        options: {
+          judgeEnabled: state.options.judgeEnabled,
+          judgeModelId: state.options.judgeModelId,
+          costCapUSD: state.options.costCapUSD,
+        },
+      }
+    : {
+        prompt: state.prompt.trim(),
+        participants: state.participants,
+        options: optionsForEngine(state.options, engine),
+      };
+  const handleLine = isCompare ? handleCompareSseLine : handleSseLine;
+  const failurePrefix = isCompare ? "Compare failed" : "Consensus failed";
 
   let outcome: RunOutcome | null = null;
 
   try {
-    const response = await fetch("/api/consensus", {
+    const response = await fetch(isCompare ? "/api/adjudicate" : "/api/consensus", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -293,17 +313,17 @@ async function runOneEngine(engineOverride?: EngineType): Promise<RunOutcome> {
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
-      for (const line of lines) outcome = handleSseLine(line) ?? outcome;
+      for (const line of lines) outcome = handleLine(line) ?? outcome;
     }
     for (const line of (buffer + decoder.decode()).split("\n")) {
-      outcome = handleSseLine(line) ?? outcome;
+      outcome = handleLine(line) ?? outcome;
     }
   } catch (err) {
     if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
       return "aborted";
     }
     const msg = err instanceof Error ? err.message : "Unknown error";
-    toast.error(`Consensus failed: ${msg}`);
+    toast.error(`${failurePrefix}: ${msg}`);
     if (useArenaStore.getState().abortController === controller) {
       useArenaStore.getState().failConsensus(msg);
     }
@@ -316,7 +336,7 @@ async function runOneEngine(engineOverride?: EngineType): Promise<RunOutcome> {
   const s = useArenaStore.getState();
   if (s.isRunning && s.abortController === controller) {
     const msg = "the stream ended before the run finished";
-    toast.error(`Consensus failed: ${msg}`);
+    toast.error(`${failurePrefix}: ${msg}`);
     s.failConsensus(msg);
   }
   return "failed";
@@ -457,6 +477,39 @@ function processEvent(event: ConsensusEvent): "complete" | "failed" | null {
       toast.error(event.message);
       s.failConsensus(event.message);
       return "failed";
+  }
+  return null;
+}
+
+// ── Compare attempts SSE ───────────────────────────────────
+
+/** Parse one `data: {...}` line from /api/adjudicate; malformed lines are skipped. */
+function handleCompareSseLine(line: string): "complete" | "failed" | null {
+  if (!line.startsWith("data: ")) return null;
+  try {
+    return processCompareEvent(JSON.parse(line.slice(6)) as CompareEvent);
+  } catch {
+    return null;
+  }
+}
+
+/** Apply one Compare attempts event. Runs are not saved to history. */
+function processCompareEvent(event: CompareEvent): "complete" | "failed" | null {
+  const s = useArenaStore.getState();
+  if (!s.isRunning) return null;
+  if (event.type === "error") {
+    toast.error(event.message);
+    s.failConsensus(event.message);
+    return "failed";
+  }
+  s.applyCompareEvent(event);
+  if (event.type === "compare-complete") {
+    const r = event.result;
+    const label = (id: string | null) =>
+      useArenaStore.getState().compare?.attempts.find((a) => a.id === id)?.label ?? id;
+    if (r.verdict === "winner") toast.success(`Recommended: ${label(r.recommended)}`);
+    else toast.info("No clear winner");
+    return "complete";
   }
   return null;
 }

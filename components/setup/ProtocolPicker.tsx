@@ -26,6 +26,7 @@ const ENGINES: { id: EngineType; facts: string }[] = [
   { id: "cvp", facts: `${MIN_ROUNDS}–${MAX_ROUNDS} rounds` },
   { id: "blind-jury", facts: "1 round" },
   { id: "adversarial", facts: `${MIN_RED_TEAM_ROUNDS}–${MAX_ROUNDS} rounds` },
+  { id: "compare-attempts", facts: "1 round, +1 if jurors split" },
 ];
 
 /**
@@ -73,7 +74,8 @@ export default function ProtocolPicker({ className }: ProtocolPickerProps) {
 
   const { engine, rounds } = options;
   const isCvp = engine === "cvp";
-  const usesRounds = engine !== "blind-jury";
+  const isCompare = engine === "compare-attempts";
+  const usesRounds = engine !== "blind-jury" && !isCompare;
   const minRounds = minRoundsFor(engine);
 
   const judgeModel = availableModels.find((m) => m.id === options.judgeModelId) ?? null;
@@ -100,9 +102,13 @@ export default function ProtocolPicker({ className }: ProtocolPickerProps) {
 
   const cap = options.costCapUSD;
   const summary = [
-    usesRounds ? `${rounds} ${rounds === 1 ? "round" : "rounds"}` : "1 round",
+    usesRounds
+      ? `${rounds} ${rounds === 1 ? "round" : "rounds"}`
+      : isCompare
+        ? "1–2 rounds"
+        : "1 round",
     options.judgeEnabled ? "judge on" : "judge off",
-    options.extractClaimsEnabled ? "claims on" : "claims off",
+    ...(isCompare ? [] : [options.extractClaimsEnabled ? "claims on" : "claims off"]),
     cap && cap > 0 ? `$${cap.toFixed(2)} cap` : "no cost cap",
   ].join(" · ");
 
@@ -115,7 +121,11 @@ export default function ProtocolPicker({ className }: ProtocolPickerProps) {
         How the panel discusses. Not sure? Debate is the most thorough, Blind jury the cheapest.
       </p>
 
-      <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Engine">
+      <div
+        className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
+        role="radiogroup"
+        aria-label="Engine"
+      >
         {ENGINES.map(({ id, facts }) => {
           const checked = engine === id;
           return (
@@ -252,7 +262,11 @@ export default function ProtocolPicker({ className }: ProtocolPickerProps) {
                 </p>
               </div>
             ) : (
-              <p className="text-[13px] text-fg-muted">Blind jury always runs a single round.</p>
+              <p className="text-[13px] text-fg-muted">
+                {isCompare
+                  ? "Compare attempts runs one blind round, and one rebuttal round only when the jurors split."
+                  : "Blind jury always runs a single round."}
+              </p>
             )}
 
             {isCvp && (
@@ -316,13 +330,15 @@ export default function ProtocolPicker({ className }: ProtocolPickerProps) {
               )}
             </div>
 
-            <Toggle
-              label="Claim extraction"
-              description="One extra call lists the specific claims participants contradict each other on."
-              checked={!!options.extractClaimsEnabled}
-              onChange={(v) => setOption("extractClaimsEnabled", v)}
-              disabled={isRunning}
-            />
+            {!isCompare && (
+              <Toggle
+                label="Claim extraction"
+                description="One extra call lists the specific claims participants contradict each other on."
+                checked={!!options.extractClaimsEnabled}
+                onChange={(v) => setOption("extractClaimsEnabled", v)}
+                disabled={isRunning}
+              />
+            )}
 
             <Field
               label="Cost cap (USD)"

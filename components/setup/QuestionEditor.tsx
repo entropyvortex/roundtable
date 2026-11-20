@@ -19,6 +19,8 @@ import { Button, Card, Textarea, cn } from "@/components/ui";
 export interface QuestionEditorProps {
   /** Called on Ctrl/⌘ + Enter in the textarea (e.g. start the run). */
   onSubmit?: () => void;
+  /** "task" (Compare attempts): the text the attempts solve; no examples. */
+  variant?: "question" | "task";
   className?: string;
 }
 
@@ -37,7 +39,12 @@ function groupByCategory(presets: readonly PromptPreset[]) {
 
 const GROUPS = groupByCategory(PROMPT_LIBRARY);
 
-export default function QuestionEditor({ onSubmit, className }: QuestionEditorProps) {
+export default function QuestionEditor({
+  onSubmit,
+  className,
+  variant = "question",
+}: QuestionEditorProps) {
+  const isTask = variant === "task";
   const prompt = useArenaStore((s) => s.prompt);
   const setPrompt = useArenaStore((s) => s.setPrompt);
   const isRunning = useArenaStore((s) => s.isRunning);
@@ -70,7 +77,7 @@ export default function QuestionEditor({ onSubmit, className }: QuestionEditorPr
     <Card as="section" aria-labelledby={headingId} className={className}>
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 id={headingId} className="text-base font-semibold text-fg">
-          Question
+          {isTask ? "Task" : "Question"}
         </h2>
         <span
           id={countId}
@@ -90,11 +97,17 @@ export default function QuestionEditor({ onSubmit, className }: QuestionEditorPr
         onKeyDown={onKeyDown}
         disabled={isRunning}
         rows={5}
-        placeholder="What should the panel decide? Include the context and constraints that matter."
+        placeholder={
+          isTask
+            ? "What were the attempts asked to do? Paste the task or issue, with its acceptance criteria."
+            : "What should the panel decide? Include the context and constraints that matter."
+        }
         className="min-h-[8rem] resize-y"
       />
       <p id={helpId} className="mt-1.5 text-[13px] text-fg-muted">
-        One clear question works best. Ctrl or ⌘ + Enter runs it.
+        {isTask
+          ? "The jurors judge every attempt against this. Ctrl or ⌘ + Enter runs it."
+          : "One clear question works best. Ctrl or ⌘ + Enter runs it."}
       </p>
       {tooLong && (
         <p id={errorId} className="mt-1 text-[13px] text-danger">
@@ -103,7 +116,7 @@ export default function QuestionEditor({ onSubmit, className }: QuestionEditorPr
         </p>
       )}
 
-      <div className="mt-4 border-t border-border pt-3">
+      <div className="mt-4 border-t border-border pt-3" hidden={isTask}>
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-medium text-fg">Examples</h3>
           {ownText && (

@@ -16,3 +16,17 @@ export const MIN_SEATS = 2;
 
 /** The route clamps `costCapUSD` to this ceiling. */
 export const MAX_COST_CAP_USD = 50;
+
+/** Compare attempts: candidates per run (`/api/adjudicate`). */
+export const MIN_ATTEMPTS = 2;
+export const MAX_ATTEMPTS = 6;
+
+/** Compare attempts: characters per candidate and across all candidates. */
+export const MAX_ATTEMPT_CHARS = 60_000;
+export const MAX_ATTEMPTS_TOTAL_CHARS = 200_000;
+
+/** Compare attempts: checks per candidate, and their field sizes. */
+export const MAX_CHECKS_PER_ATTEMPT = 8;
+export const MAX_CHECK_NAME_CHARS = 80;
+export const MAX_CHECK_OUTPUT_CHARS = 4_000;
+export const MAX_ATTEMPT_LABEL_CHARS = 60;

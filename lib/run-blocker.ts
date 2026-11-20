@@ -2,9 +2,17 @@
 // RoundTable — Why a run cannot start yet
 // ─────────────────────────────────────────────────────────────
 
-import { MAX_PROMPT_LENGTH, MAX_SEATS, MIN_SEATS } from "./limits";
+import {
+  MAX_ATTEMPT_CHARS,
+  MAX_ATTEMPTS,
+  MAX_ATTEMPTS_TOTAL_CHARS,
+  MAX_PROMPT_LENGTH,
+  MAX_SEATS,
+  MIN_ATTEMPTS,
+  MIN_SEATS,
+} from "./limits";
 import { sanitizeCustomPersonaSpec } from "./personas";
-import type { ConsensusOptions, ModelInfo, Participant } from "./types";
+import type { AttemptDraft, ConsensusOptions, ModelInfo, Participant } from "./types";
 
 /** A seat as the blocker needs it: the model, and the persona when it may be custom. */
 export type ReadinessSeat = Pick<Participant, "modelInfo"> &
@@ -15,7 +23,25 @@ export interface RunReadinessInput {
   participants: readonly ReadinessSeat[];
   availableModels: readonly Pick<ModelInfo, "id">[];
   modelsLoading: boolean;
-  options: Pick<ConsensusOptions, "judgeEnabled" | "judgeModelId">;
+  options: Pick<ConsensusOptions, "judgeEnabled" | "judgeModelId"> &
+    Partial<Pick<ConsensusOptions, "engine">>;
+  /** Compare attempts only: the pasted attempts. */
+  attempts?: readonly Pick<AttemptDraft, "content">[];
+}
+
+/** Why the Compare attempts inputs can't run yet, or null. */
+function attemptsBlocker(attempts: readonly Pick<AttemptDraft, "content">[]): string | null {
+  if (attempts.length < MIN_ATTEMPTS) return `Add at least ${MIN_ATTEMPTS} attempts`;
+  if (attempts.length > MAX_ATTEMPTS) return `Remove attempts: ${MAX_ATTEMPTS} is the maximum`;
+  const empty = attempts.findIndex((a) => !a.content.trim());
+  if (empty >= 0) return `Paste attempt ${empty + 1}`;
+  const long = attempts.findIndex((a) => a.content.length > MAX_ATTEMPT_CHARS);
+  if (long >= 0)
+    return `Shorten attempt ${long + 1} to ${MAX_ATTEMPT_CHARS.toLocaleString("en-US")} characters`;
+  const total = attempts.reduce((n, a) => n + a.content.length, 0);
+  if (total > MAX_ATTEMPTS_TOTAL_CHARS)
+    return `Shorten the attempts to ${MAX_ATTEMPTS_TOTAL_CHARS.toLocaleString("en-US")} characters in total`;
+  return null;
 }
 
 /**
@@ -26,7 +52,8 @@ export interface RunReadinessInput {
 export function getRunBlocker(s: RunReadinessInput): string | null {
   if (s.modelsLoading) return "Fetching providers…";
   if (s.availableModels.length === 0) return "No models available. Set AI_PROVIDERS first.";
-  if (!s.prompt.trim()) return "Write a question";
+  const isCompare = s.options.engine === "compare-attempts";
+  if (!s.prompt.trim()) return isCompare ? "Describe the task" : "Write a question";
   if (s.prompt.length > MAX_PROMPT_LENGTH)
     return `Shorten the question to ${MAX_PROMPT_LENGTH.toLocaleString("en-US")} characters`;
   if (s.participants.length < MIN_SEATS) return `Add at least ${MIN_SEATS} seats`;
@@ -44,5 +71,6 @@ export function getRunBlocker(s: RunReadinessInput): string | null {
     if (!s.options.judgeModelId) return "Pick a judge model or turn the judge off";
     if (!known.has(s.options.judgeModelId)) return "Pick a judge model this server offers";
   }
+  if (isCompare) return attemptsBlocker(s.attempts ?? []);
   return null;
 }

@@ -27,6 +27,8 @@ export function minRoundsFor(engine: EngineType): number {
  */
 export function effectiveRounds(engine: EngineType, rounds: number): number {
   if (engine === "blind-jury") return 1;
+  // One blind round, plus one rebuttal round when the jurors split.
+  if (engine === "compare-attempts") return 2;
   const n = Number.isFinite(rounds) ? Math.round(rounds) : MIN_ROUNDS;
   return Math.min(MAX_ROUNDS, Math.max(minRoundsFor(engine), n));
 }
@@ -38,7 +40,10 @@ export function effectiveRounds(engine: EngineType, rounds: number): number {
  * same object when nothing changes.
  */
 export function optionsForEngine(options: ConsensusOptions, engine: EngineType): ConsensusOptions {
-  const rounds = engine === "blind-jury" ? options.rounds : effectiveRounds(engine, options.rounds);
+  const rounds =
+    engine === "blind-jury" || engine === "compare-attempts"
+      ? options.rounds
+      : effectiveRounds(engine, options.rounds);
   if (options.engine === engine && options.rounds === rounds) return options;
   return { ...options, engine, rounds };
 }

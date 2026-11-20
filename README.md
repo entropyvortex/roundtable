@@ -173,6 +173,18 @@ The attacker's confidence score reports how confident they are that the attack l
 
 Switch engines in the Protocol section of Setup. Red Team uses the rounds setting with a minimum of 3 rounds (opening positions, at least one stress round, final synthesis); a lower setting is raised to 3 in the Setup stepper, in the estimate and in the request.
 
+### Compare Attempts Engine
+
+The fourth engine judges **solutions** instead of debating a question: paste 2–6 attempts at the same task (diffs or changed code, as from a best-of-N run), optionally with check results (build, tests, lint), and the panel acts as a blind jury over them. It runs on [`ai-consensus-core`](https://github.com/entropyvortex/ai-consensus-core)'s `AdjudicationEngine`:
+
+1. **Blind round.** Every juror sees the task and every attempt under neutral labels (A, B, C…) in its own shuffled order. Your labels never reach a model. Each juror answers with a full ranking and findings that quote the attempt verbatim; output that does not match the contract is an abstention.
+2. **Verification.** A finding is kept only if its quote appears in the attempt it names; the dropped count is shown.
+3. **Aggregation.** Borda count ranks the attempts and Kendall's W measures agreement. An attempt with a failed check cannot be recommended unless every attempt failed one.
+4. **Rebuttal** (only when the jurors split): each juror sees the others' anonymous verdicts and may revise its ranking.
+5. **Judge** (optional): the same non-voting judge writes Majority / Minority / Unresolved.
+
+The verdict is a recommended attempt, or **No clear winner** with the reason (low agreement, a tie on points, too few valid verdicts, or an unfinished first round). The Run view shows the ranking with points, the agreement, each juror's status, the verified findings per attempt, the synthesis, and the token cost. Compare runs stream from `/api/adjudicate`; they are not saved to History and are not part of the engine sweep.
+
 ### Engine Sweep Mode
 
 Click **Run all three engines** instead of **Run** to send the same question through CVP, Blind Jury and Adversarial Red Team in sequence. While it runs, the Run view header shows the current leg ("Engine 2 of 3 · Blind jury"). When it finishes, the **Compare engines** table has one row per engine: final score and label, contradiction count, confidence-spread flag count, the judge's majority excerpt, and the cost and token subtotal. Open a row to load that engine's run; the header then names that engine, the table stays, and your Setup options are left unchanged. Each leg is saved to History under its own engine, and exports and permalinks name the engine that produced the run on screen. The Red team leg always runs at least 3 rounds. The point is to make the protocol space visible: the same question may converge under one engine and split under another.
@@ -340,7 +352,7 @@ Edit `.env.local` with your keys, then:
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). In **Setup**, write a question or pick an example, then build the panel: add seats and choose a persona and model for each, apply a preset, or build a custom persona with the axis sliders. Choose an engine under **Protocol** (Debate / CVP, Blind jury or Red team); the **Advanced** section holds rounds, blind round 1, randomized order, early stop, judge synthesis, claim extraction and the cost cap. The bar at the bottom shows the estimated calls, cost and time. Press **Run**, or **Run all three engines** for a sweep. The **Run** view streams the brief beside the transcript, and **Export** downloads Markdown or JSON or copies a permalink that reopens the run read-only. Every completed run lands in **History**, where it can be reopened, re-run, annotated or compared with another.
+Open [http://localhost:3000](http://localhost:3000). In **Setup**, write a question or pick an example, then build the panel: add seats and choose a persona and model for each, apply a preset, or build a custom persona with the axis sliders. Choose an engine under **Protocol** (Debate / CVP, Blind jury, Red team, or Compare attempts to judge pasted solutions); the **Advanced** section holds rounds, blind round 1, randomized order, early stop, judge synthesis, claim extraction and the cost cap. The bar at the bottom shows the estimated calls, cost and time. Press **Run**, or **Run all three engines** for a sweep. The **Run** view streams the brief beside the transcript, and **Export** downloads Markdown or JSON or copies a permalink that reopens the run read-only. Every completed run lands in **History**, where it can be reopened, re-run, annotated or compared with another.
 
 ---
 
@@ -436,6 +448,7 @@ Any OpenAI-compatible API works. Add an entry to the `AI_PROVIDERS` array with t
 app/
   api/
     consensus/route.ts       SSE streaming endpoint — validates options & dispatches to the engine
+    adjudicate/route.ts      SSE endpoint for Compare attempts — validates attempts, checks and jurors
     providers/route.ts       Returns client-safe model list (no secrets)
   page.tsx                   AppShell + Setup / Run / History; SSE processor, sweep, Stop/Esc, permalinks, history auto-save
   layout.tsx                 Root layout — Inter font, pre-paint theme script, Sonner toasts
@@ -449,7 +462,8 @@ components/
     theme-script.ts          Server-safe pre-paint script that applies the saved theme
   setup/
     SetupView.tsx            Question → Panel → Protocol → Estimate + Run, in one column
-    QuestionEditor.tsx       Question box, character count, example chips by category
+    QuestionEditor.tsx       Question box (or the task, for Compare attempts), character count, examples
+    AttemptsEditor.tsx       Compare attempts: 2–6 pasted attempts with labels and check results
     PanelEditor.tsx          Seats (persona + model each), panel presets, custom persona entry
     ModelPicker.tsx          Keyboard-operable provider → model cascade
     ProtocolPicker.tsx       Engine cards in plain language + Advanced options
@@ -457,6 +471,7 @@ components/
     GettingStarted.tsx       Three-step explainer shown until the first run is saved
   run/
     RunView.tsx              Header, Compare engines, then Brief + Signals beside the Transcript (tabs below lg)
+    CompareView.tsx          Compare attempts result: verdict, ranking, agreement, jurors, findings, synthesis
     RunHeader.tsx            Question, engine, panel, status line; Stop / Export / Re-run / New run
     Brief.tsx                Answer first: score + label, judge verdict, where they split, who moved
     WhoMoved.tsx             First → last confidence per participant, biggest shift first
@@ -481,7 +496,10 @@ components/
   PersonaBuilder.tsx         Axis-slider builder for custom personas (no free-text → no jailbreak surface)
   SessionMenu.tsx            Export menu: Markdown / JSON download, copy permalink
 lib/
-  consensus-engine.ts        CVP + Blind Jury + Adversarial Red Team orchestration, judge, claim extractor, cost cap
+  consensus-engine.ts        CVP + Blind Jury + Adversarial Red Team orchestration on ai-consensus-core primitives
+  core-caller.ts             ai-consensus-core ModelCaller over the Vercel AI SDK (streaming, usage, abort)
+  compare-attempts.ts        Compare attempts on ai-consensus-core's AdjudicationEngine; attempt validation
+  route-guards.ts            Rate limiter and server-side participant rebuild shared by the API routes
   providers.ts               Server-side provider resolution (parses AI_PROVIDERS)
   personas.ts                7 participant personas + JUDGE_PERSONA + axis-based custom-persona composer
   pricing.ts                 Model pricing table + cost estimator

@@ -13,6 +13,7 @@ import { useArenaStore } from "@/lib/store";
 import type { SessionSnapshot } from "@/lib/types";
 import { Button, EmptyState, TabPanel, Tabs, cn, type TabItem } from "@/components/ui";
 import RunHeader from "./RunHeader";
+import CompareView from "./CompareView";
 import CompareEngines from "./CompareEngines";
 import Brief from "./Brief";
 import Signals from "./Signals";
@@ -46,6 +47,11 @@ export default function RunView({ onCancel, onNewRun, onRerun, onOpenSnapshot }:
   const hasSweepResults = useArenaStore((s) => s.sweepResults.length > 0);
   const runStartedAt = useArenaStore((s) => s.runStartedAt);
   const finalScore = useArenaStore((s) => s.finalScore);
+  const isCompareRun = useArenaStore((s) => s.runOptions?.engine === "compare-attempts");
+
+  if (isCompareRun) {
+    return <CompareView onCancel={onCancel} onNewRun={onNewRun} onRerun={onRerun} />;
+  }
 
   const empty =
     !hasRounds &&
