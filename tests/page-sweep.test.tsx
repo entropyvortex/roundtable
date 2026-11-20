@@ -22,7 +22,7 @@ vi.mock("react-markdown", () => ({
 }));
 vi.mock("remark-gfm", () => ({ default: () => {} }));
 
-const SCORES: Record<EngineType, number> = { cvp: 82, "blind-jury": 64, adversarial: 45 };
+const SCORES: Record<string, number> = { cvp: 82, "blind-jury": 64, adversarial: 45 };
 const ENGINES: EngineType[] = ["cvp", "blind-jury", "adversarial"];
 let server: FakeServer;
 

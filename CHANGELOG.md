@@ -6,6 +6,8 @@ All notable changes to RoundTable are recorded here. The format follows [Keep a 
 
 ### Added
 
+- **Compare attempts engine.** A fourth engine card judges 2–6 pasted solutions to one task (with optional check results) using `ai-consensus-core`'s `AdjudicationEngine`: blind jurors under shuffled neutral labels, quote-verified findings, Borda count and Kendall's W, a rebuttal round only when the jurors split, then the judge. The Run view shows the recommended attempt or "No clear winner" with the reason, the ranking with points, agreement, juror status, findings with the dropped count, and the judge synthesis. Streams from the new `POST /api/adjudicate`. Not saved to History and not part of the engine sweep.
+
 - **Setup, Run and History views.** The single page is now three views behind a header switch. Setup holds the question, the panel, the protocol and a pre-run estimate; Run shows the brief beside the transcript; History lists saved runs.
 - **Answer-first brief.** The Run view leads with the consensus score and a plain-language label (Strong agreement, Broad agreement with reservations, Split, Deep disagreement), then the judge's majority / minority / unresolved verdict, the claim-level contradictions ("Where they split", each side linking to its quote in the transcript) and "Who moved" (first → last confidence per participant). On wide screens the transcript sits beside the brief; on narrow ones Brief / Transcript / Signals are tabs. The transcript has round navigation with per-round scores, live streaming, a "Final positions" shortcut and a per-participant filter.
 - **Run history.** Every completed run, including each engine of a sweep, is saved to `localStorage` (key `rt.history.v1`, newest 50, quota-safe) with a "Saved to history" toast; a failed save is reported too. The History view searches, filters by engine, takes notes, exports, deletes and reopens runs so they can be re-run.
@@ -25,6 +27,9 @@ All notable changes to RoundTable are recorded here. The format follows [Keep a 
 - **`SessionSnapshot.claims`** field on the snapshot type (optional for backwards compat with older permalinks). Loading a permalink rehydrates the claim digest into the brief.
 
 ### Changed
+
+- **Engines run on `ai-consensus-core`.** The duplicated protocol code in `lib/consensus-engine.ts` is replaced by core: round prompts, trailing-marker confidence parsing, consensus score, disagreement detection, judge prompts and section parsing, the claim extractor and the cost-cap error. Every model call goes through a core `ModelCaller` adapter over the Vercel AI SDK (`lib/core-caller.ts`). The CVP, Blind Jury and Red Team loops stay in Roundtable and behave as before (same prompts, events and defaults).
+- The participant rebuild and rate limiter of `/api/consensus` moved to `lib/route-guards.ts`, shared with `/api/adjudicate`; responses are unchanged.
 
 - Flat, token-based design: 1px borders, 8–12px radii, no blur, glow or decorative gradients, Inter, 14px body text, visible focus rings and keyboard-operable menus. Motion is opacity and transform only and off under `prefers-reduced-motion`.
 - `ConfidenceTrajectory`, `JudgeCard`, `ClaimsPanel`, `DisagreementPanel` (now "Confidence-spread flags"), `CostMeter` (now split by seat, judge and claim extraction) and `SessionMenu` are restyled for the Run view.

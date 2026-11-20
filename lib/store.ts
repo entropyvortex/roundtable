@@ -5,7 +5,9 @@
 import { create } from "zustand";
 import type {
   ArenaState,
+  AttemptDraft,
   ClaimDigest,
+  CompareRunState,
   ConsensusOptions,
   LoadSnapshotOptions,
   Disagreement,
@@ -16,6 +18,35 @@ import type {
 } from "./types";
 import { addUsage, ZERO_USAGE } from "./pricing";
 import { optionsForEngine } from "./engine-rules";
+import { MAX_ATTEMPTS, MAX_CHECKS_PER_ATTEMPT, MIN_ATTEMPTS } from "./limits";
+
+let attemptCounter = 0;
+
+function newAttempt(): AttemptDraft {
+  attemptCounter += 1;
+  return { id: `draft-${attemptCounter}`, label: "", content: "", checks: [] };
+}
+
+/** Compare state after `compare-start` (or empty, before it arrives). */
+function freshCompare(
+  attempts: CompareRunState["attempts"] = [],
+  jurorIds: string[] = [],
+): CompareRunState {
+  return {
+    attempts,
+    jurorIds,
+    round: 0,
+    roundKind: "blind",
+    jurors: {},
+    kendallW: null,
+    votes: 0,
+    judgeRunning: false,
+    judgeStream: "",
+    judge: null,
+    result: null,
+    tokenTotal: null,
+  };
+}
 
 let participantCounter = 0;
 
@@ -77,6 +108,9 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
 
   runOptions: null,
   runError: null,
+
+  attempts: Array.from({ length: MIN_ATTEMPTS }, newAttempt),
+  compare: null,
 
   sharedView: false,
   abortController: null,
@@ -141,6 +175,102 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       options: { ...s.options, [key]: value },
     })),
 
+  // ── Compare attempts: Setup drafts ─────────────────────────
+
+  addAttempt: () =>
+    set((s) =>
+      s.attempts.length >= MAX_ATTEMPTS ? {} : { attempts: [...s.attempts, newAttempt()] },
+    ),
+
+  removeAttempt: (id) =>
+    set((s) =>
+      s.attempts.length <= MIN_ATTEMPTS ? {} : { attempts: s.attempts.filter((a) => a.id !== id) },
+    ),
+
+  updateAttempt: (id, patch) =>
+    set((s) => ({ attempts: s.attempts.map((a) => (a.id === id ? { ...a, ...patch } : a)) })),
+
+  addAttemptCheck: (id) =>
+    set((s) => ({
+      attempts: s.attempts.map((a) =>
+        a.id === id && a.checks.length < MAX_CHECKS_PER_ATTEMPT
+          ? { ...a, checks: [...a.checks, { name: "", status: "passed" as const }] }
+          : a,
+      ),
+    })),
+
+  updateAttemptCheck: (id, index, patch) =>
+    set((s) => ({
+      attempts: s.attempts.map((a) =>
+        a.id === id
+          ? { ...a, checks: a.checks.map((c, i) => (i === index ? { ...c, ...patch } : c)) }
+          : a,
+      ),
+    })),
+
+  removeAttemptCheck: (id, index) =>
+    set((s) => ({
+      attempts: s.attempts.map((a) =>
+        a.id === id ? { ...a, checks: a.checks.filter((_, i) => i !== index) } : a,
+      ),
+    })),
+
+  // ── Compare attempts: run events ───────────────────────────
+
+  applyCompareEvent: (event) =>
+    set((s) => {
+      if (!s.isRunning || !s.compare) return {};
+      const c = s.compare;
+      switch (event.type) {
+        case "compare-start":
+          return { compare: freshCompare(event.attempts, event.jurorIds) };
+        case "compare-round-start":
+          return { compare: { ...c, round: event.round, roundKind: event.kind } };
+        case "juror-start":
+          return {
+            compare: {
+              ...c,
+              jurors: { ...c.jurors, [event.jurorId]: { round: event.round, status: "running" } },
+            },
+          };
+        case "juror-end":
+          return {
+            compare: {
+              ...c,
+              jurors: {
+                ...c.jurors,
+                [event.jurorId]: {
+                  round: event.round,
+                  status: event.status,
+                  verified: event.verified,
+                  dropped: event.dropped,
+                  ...(event.reason ? { reason: event.reason } : {}),
+                },
+              },
+            },
+          };
+        case "compare-round-end":
+          return { compare: { ...c, kendallW: event.kendallW, votes: event.votes } };
+        case "judge-start":
+          return { compare: { ...c, judgeRunning: true, judgeStream: "" } };
+        case "judge-token":
+          return { compare: { ...c, judgeStream: c.judgeStream + event.token } };
+        case "judge-end":
+          return { compare: { ...c, judgeRunning: false, judgeStream: "", judge: event.result } };
+        case "compare-complete":
+          return {
+            compare: { ...c, result: event.result, tokenTotal: event.tokenTotal },
+            isRunning: false,
+            runError: null,
+            progress: 1,
+            abortController: null,
+            runEndedAt: Date.now(),
+          };
+        case "error":
+          return {};
+      }
+    }),
+
   // ── Lifecycle ──────────────────────────────────────────────
 
   startConsensus: (engine) => {
@@ -171,6 +301,7 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       abortController: controller,
       runStartedAt: Date.now(),
       runEndedAt: null,
+      compare: (engine ?? options.engine) === "compare-attempts" ? freshCompare() : null,
     });
     return controller;
   },
@@ -179,6 +310,7 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
     set((s) => {
       s.abortController?.abort();
       return {
+        compare: s.compare ? { ...s.compare, judgeRunning: false, judgeStream: "" } : null,
         isRunning: false,
         judgeRunning: false,
         judgeStream: "",
@@ -359,6 +491,7 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
 
   failConsensus: (message) =>
     set((s) => ({
+      compare: s.compare ? { ...s.compare, judgeRunning: false, judgeStream: "" } : null,
       isRunning: false,
       runError: message,
       finalScore: null,
@@ -400,6 +533,7 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
         runEndedAt: null,
         runOptions: null,
         runError: null,
+        compare: null,
       };
     }),
 
@@ -440,6 +574,7 @@ export const useArenaStore = create<ArenaState>((set, get) => ({
       usageByParticipant,
       claims: snapshot.claims ?? null,
       claimsRunning: false,
+      compare: null,
       roundsCompleted: snapshot.rounds.length,
       progress: 1,
       activeStreams: {},

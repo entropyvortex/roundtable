@@ -33,6 +33,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 
 export default function EstimateBar({ onRun, onSweep, onCancel, className }: EstimateBarProps) {
   const prompt = useArenaStore((s) => s.prompt);
+  const attempts = useArenaStore((s) => s.attempts);
   const participants = useArenaStore((s) => s.participants);
   const options = useArenaStore((s) => s.options);
   const availableModels = useArenaStore((s) => s.availableModels);
@@ -47,23 +48,36 @@ export default function EstimateBar({ onRun, onSweep, onCancel, className }: Est
   const uid = useId();
   const reasonId = `estimate-reason-${uid}`;
 
+  const isCompare = options.engine === "compare-attempts";
+  // Compare attempts sends every attempt to every juror with the task.
+  const inputLength = isCompare
+    ? prompt.length + attempts.reduce((n, a) => n + a.content.length, 0)
+    : prompt.length;
+
   // Estimate what the page will send: the rounds raised to the engine's minimum.
   const estimate = useMemo(
-    () => estimateRun(participants, optionsForEngine(options, options.engine), prompt.length),
-    [participants, options, prompt.length],
+    () => estimateRun(participants, optionsForEngine(options, options.engine), inputLength),
+    [participants, options, inputLength],
   );
   const sweepEstimate = useMemo(
     () => estimateSweep(participants, options, prompt.length),
     [participants, options, prompt.length],
   );
 
-  const blocker = getRunBlocker({ prompt, participants, availableModels, modelsLoading, options });
+  const blocker = getRunBlocker({
+    prompt,
+    participants,
+    availableModels,
+    modelsLoading,
+    options,
+    attempts,
+  });
   const hasSeats = participants.length > 0;
   const cap = options.costCapUSD ?? 0;
 
   const extras = [
     options.judgeEnabled && options.judgeModelId ? "the judge" : null,
-    options.extractClaimsEnabled ? "claim extraction" : null,
+    options.extractClaimsEnabled && !isCompare ? "claim extraction" : null,
   ].filter((x): x is string => x !== null);
 
   const assumptions = (
@@ -154,16 +168,18 @@ export default function EstimateBar({ onRun, onSweep, onCancel, className }: Est
             </Button>
           ) : (
             <>
-              <Button
-                variant="secondary"
-                onClick={onSweep}
-                disabled={!!blocker}
-                aria-describedby={blocker ? reasonId : undefined}
-                title="Runs Debate, Blind jury and Red team one after another"
-                className="flex-1 sm:flex-none"
-              >
-                Run all three engines
-              </Button>
+              {!isCompare && (
+                <Button
+                  variant="secondary"
+                  onClick={onSweep}
+                  disabled={!!blocker}
+                  aria-describedby={blocker ? reasonId : undefined}
+                  title="Runs Debate, Blind jury and Red team one after another"
+                  className="flex-1 sm:flex-none"
+                >
+                  Run all three engines
+                </Button>
+              )}
               <Button
                 variant="primary"
                 onClick={onRun}

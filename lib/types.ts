@@ -2,6 +2,8 @@
 // RoundTable — Core Type Definitions
 // ─────────────────────────────────────────────────────────────
 
+import type { AdjudicationResult } from "ai-consensus-core";
+
 /** Raw provider config as stored in AI_PROVIDERS env var */
 export interface ProviderConfig {
   id: string;
@@ -128,7 +130,7 @@ export type RoundType =
   | "synthesis";
 
 /** Which engine to run */
-export type EngineType = "cvp" | "blind-jury" | "adversarial";
+export type EngineType = "cvp" | "blind-jury" | "adversarial" | "compare-attempts";
 
 /** A detected disagreement between participants in a round */
 export interface Disagreement {
@@ -247,6 +249,92 @@ export type ConsensusEvent =
     }
   | { type: "error"; message: string };
 
+// ── Compare attempts ───────────────────────────────────────
+
+export type AttemptCheckStatus = "passed" | "failed" | "unknown";
+
+/** A check result the user attaches to an attempt (build, tests, lint…). */
+export interface AttemptCheck {
+  name: string;
+  status: AttemptCheckStatus;
+  /** Optional output excerpt, shown to the jurors verbatim. */
+  output?: string;
+}
+
+/** One pasted candidate solution in Setup. `label` is for the user only. */
+export interface AttemptDraft {
+  id: string;
+  label: string;
+  content: string;
+  checks: AttemptCheck[];
+}
+
+/** Request body for /api/adjudicate */
+export interface CompareRequest {
+  task: string;
+  attempts: Array<{ label?: string; content: string; checks?: AttemptCheck[] }>;
+  participants: Participant[];
+  options: Pick<ConsensusOptions, "judgeEnabled" | "judgeModelId" | "costCapUSD">;
+}
+
+/** Ids the server gives attempts, in input order: attempt-1, attempt-2, … */
+export type CompareResult = AdjudicationResult;
+
+/** SSE events streamed from /api/adjudicate */
+export type CompareEvent =
+  | {
+      type: "compare-start";
+      attempts: Array<{ id: string; label: string }>;
+      jurorIds: string[];
+    }
+  | { type: "compare-round-start"; round: number; kind: "blind" | "rebuttal" }
+  | { type: "juror-start"; jurorId: string; round: number }
+  | {
+      type: "juror-end";
+      jurorId: string;
+      round: number;
+      status: "valid" | "abstained" | "cancelled";
+      /** Attempt ids, best first (empty unless valid). */
+      ranking: string[];
+      verified: number;
+      dropped: number;
+      reason?: string;
+      durationMs: number;
+      usage?: TokenUsage;
+    }
+  | { type: "compare-round-end"; round: number; kendallW: number | null; votes: number }
+  | { type: "judge-start"; modelId: string; providerName: string }
+  | { type: "judge-token"; token: string }
+  | { type: "judge-end"; result: JudgeResult }
+  | { type: "compare-complete"; result: CompareResult; tokenTotal: TokenUsage }
+  | { type: "error"; message: string };
+
+/** Live and final state of a Compare attempts run. */
+export interface CompareRunState {
+  attempts: Array<{ id: string; label: string }>;
+  jurorIds: string[];
+  round: number;
+  roundKind: "blind" | "rebuttal";
+  /** Latest status per juror for the current round. */
+  jurors: Record<
+    string,
+    {
+      round: number;
+      status: "running" | "valid" | "abstained" | "cancelled";
+      reason?: string;
+      verified?: number;
+      dropped?: number;
+    }
+  >;
+  kendallW: number | null;
+  votes: number;
+  judgeRunning: boolean;
+  judgeStream: string;
+  judge: JudgeResult | null;
+  result: CompareResult | null;
+  tokenTotal: TokenUsage | null;
+}
+
 /** Request body for /api/consensus */
 export interface ConsensusRequest {
   prompt: string;
@@ -345,6 +433,10 @@ export interface ArenaState {
   // Shared-session replay flag
   sharedView: boolean;
 
+  // Compare attempts: the pasted candidates (Setup) and the run state
+  attempts: AttemptDraft[];
+  compare: CompareRunState | null;
+
   // Cancellation
   abortController: AbortController | null;
 
@@ -406,6 +498,16 @@ export interface ArenaState {
   /** End the run with an error: no final score, `runError` set, spinners cleared. */
   failConsensus: (message: string) => void;
   reset: () => void;
+
+  // Actions — Compare attempts
+  addAttempt: () => void;
+  removeAttempt: (id: string) => void;
+  updateAttempt: (id: string, patch: Partial<Pick<AttemptDraft, "label" | "content">>) => void;
+  addAttemptCheck: (id: string) => void;
+  updateAttemptCheck: (id: string, index: number, patch: Partial<AttemptCheck>) => void;
+  removeAttemptCheck: (id: string, index: number) => void;
+  /** Apply one /api/adjudicate SSE event to `compare` (no-op when not running). */
+  applyCompareEvent: (event: CompareEvent) => void;
 
   // Views
   setView: (view: AppView) => void;

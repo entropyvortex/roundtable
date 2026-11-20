@@ -103,6 +103,12 @@ const ENGINE_LABELS: Record<EngineType, { name: string; short: string; descripti
     description:
       "Everyone answers once, independently, then a judge summarises. Cheapest and immune to anchoring.",
   },
+  "compare-attempts": {
+    name: "Compare attempts",
+    short: "Compare",
+    description:
+      "Blind jurors rank 2–6 pasted solutions to one task; a deterministic count picks the winner, or says there is none.",
+  },
   adversarial: {
     name: "Red team",
     short: "Red team",

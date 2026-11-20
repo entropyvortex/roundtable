@@ -103,6 +103,7 @@ function bareModelId(id: string): string {
 
 function roundBounds(options: EstimateOptions): { minRounds: number; maxRounds: number } {
   if (options.engine === "blind-jury") return { minRounds: 1, maxRounds: 1 };
+  if (options.engine === "compare-attempts") return { minRounds: 1, maxRounds: 2 };
   const rounds = clampRounds(options.rounds);
   if (options.engine === "cvp" && options.earlyStop && rounds >= 3) {
     return { minRounds: 2, maxRounds: rounds };
@@ -138,6 +139,13 @@ function planRun(
   if (options.engine === "blind-jury") {
     everyone(0);
     steps += 1;
+  } else if (options.engine === "compare-attempts") {
+    // Every juror reads the task and every attempt (in the prompt length);
+    // a rebuttal round adds the other jurors' verdicts.
+    for (let r = 1; r <= rounds; r++) {
+      everyone(r === 1 ? 0 : n - 1);
+      steps += 1;
+    }
   } else if (options.engine === "adversarial") {
     everyone(0); // round 1, parallel
     steps += 1;
@@ -174,7 +182,7 @@ function planRun(
     });
     steps += 1;
   }
-  if (options.extractClaimsEnabled) {
+  if (options.extractClaimsEnabled && options.engine !== "compare-attempts") {
     const first = participants[0].modelInfo.modelId;
     calls.push({
       modelId: judgeId ?? first,
