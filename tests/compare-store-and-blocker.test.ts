@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useArenaStore } from "@/lib/store";
 import { getRunBlocker } from "@/lib/run-blocker";
-import type { CompareResult } from "@/lib/types";
+import type { CompareResult, ModelInfo } from "@/lib/types";
 
 // Contracts: the attempts editor actions keep 2–6 attempts and ≤8 checks;
 // applyCompareEvent folds the SSE stream into `compare`; the run blocker
@@ -103,10 +103,11 @@ describe("applyCompareEvent", () => {
 });
 
 describe("getRunBlocker — Compare attempts", () => {
+  const model: ModelInfo = { id: "t:m", providerId: "t", providerName: "T", modelId: "m" };
   const base = {
     prompt: "Fix it",
-    participants: [{ modelInfo: { id: "t:m" } }, { modelInfo: { id: "t:m" } }],
-    availableModels: [{ id: "t:m" }],
+    participants: [{ modelInfo: model }, { modelInfo: model }],
+    availableModels: [model],
     modelsLoading: false,
     options: { engine: "compare-attempts" as const, judgeEnabled: false },
   };
