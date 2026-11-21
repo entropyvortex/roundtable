@@ -28,6 +28,9 @@ importers:
       ai:
         specifier: ^6.0.158
         version: 6.0.214(zod@4.6.7)
+      ai-consensus-core:
+        specifier: ^0.13.0
+        version: 0.13.0
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1069,6 +1072,10 @@ packages:
     resolution: {integrity: sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==}
     engines: {node: '>=0.4.0'}
     hasBin: true
+
+  ai-consensus-core@0.13.0:
+    resolution: {integrity: sha512-5M5MDbD0K/sEe24KUqg6rJn1eoop5UDQVYAZBkz3qzbWbsykpy+VQX3oY/1Sru1xjLoK/lkKjoaWBoiUAx+EkA==}
+    engines: {node: '>=20'}
 
   ai@6.0.214:
     resolution: {integrity: sha512-9MlePEXT5pXtQv4fXqmiR0RG3DZU4Dbv+kU9ktEJC2COi2RH2WvI2GiyG9MuCqgPII6f1w+5kB5fNIiArqPzaQ==}
@@ -3965,6 +3972,10 @@ snapshots:
       acorn: 8.16.0
 
   acorn@8.16.0: {}
+
+  ai-consensus-core@0.13.0:
+    dependencies:
+      zod: 4.6.7
 
   ai@6.0.214(zod@4.6.7):
     dependencies:
